@@ -6,11 +6,13 @@ by forwarding A2A messages to n8n webhooks.
 """
 
 import json
+import asyncio
+import time
+import uuid
 from typing import Any, Dict
 
-import httpx
+from httpx import HTTPStatusError, ConnectError, ReadTimeout
 from a2a.types import Message, MessageSendParams, Task, TextPart
-
 from ..adapter import BaseAgentAdapter
 
 
@@ -27,6 +29,8 @@ class N8nAgentAdapter(BaseAgentAdapter):
         webhook_url: str,
         timeout: int = 30,
         headers: Dict[str, str] | None = None,
+        max_retries: int = 2,  
+        backoff: float = 0.25,
     ):
         """
         Initialize the n8n adapter.
@@ -38,9 +42,11 @@ class N8nAgentAdapter(BaseAgentAdapter):
         """
         self.webhook_url = webhook_url
         self.timeout = timeout
-        self.headers = headers or {}
-        self._client: httpx.AsyncClient | None = None
-
+        self.headers = dict(headers) if headers else {}
+        self.max_retries = max(0, int(max_retries))
+        self.backoff = float(backoff)  
+        self._client: httpx.AsyncClient | None = None           
+        
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create the HTTP client."""
         if self._client is None:
@@ -67,23 +73,28 @@ class N8nAgentAdapter(BaseAgentAdapter):
             Dictionary with 'message' and optional 'metadata' keys
         """
         # Extract text from the last user message
+        def _extract_text(msg) -> str:
+            if not hasattr(msg, "content"):
+                return ""
+            c = msg.content
+            if isinstance(c, str):
+                 return c.strip()
+            if isinstance(c, list):
+                 parts: list[str] = []
+                 for it in c:
+                    t = getattr(it, "text", "")
+                    t = (t or "").strip()
+                    if t:
+                        parts.append(t)
+                 return " ".join(parts)
+
+             return ""
+
         user_message = ""
         if params.messages:
-            last_message = params.messages[-1]
-            if hasattr(last_message, "content"):
-                if isinstance(last_message.content, list):
-                    # Extract text from content blocks
-                    text_parts = [
-                        item.text
-                        for item in last_message.content
-                        if hasattr(item, "text")
-                    ]
-                    user_message = " ".join(text_parts)
-                elif isinstance(last_message.content, str):
-                    user_message = last_message.content
+            user_message = _extract_text(params.messages[-1])
 
-        # Build n8n webhook payload
-        payload = {
+        return {
             "message": user_message,
             "metadata": {
                 "session_id": getattr(params, "session_id", None),
@@ -91,39 +102,43 @@ class N8nAgentAdapter(BaseAgentAdapter):
             },
         }
 
-        return payload
-
     async def call_framework(
-        self, framework_input: Dict[str, Any], params: MessageSendParams
+         self, framework_input: Dict[str, Any], params: MessageSendParams
     ) -> Dict[str, Any]:
-        """
-        Execute the n8n workflow by POSTing to the webhook URL.
-        
-        Args:
-            framework_input: Payload to send to n8n
-            params: Original A2A parameters (for context)
-            
-        Returns:
-            JSON response from n8n webhook
-            
-        Raises:
-            httpx.HTTPError: If the HTTP request fails
-        """
         client = await self._get_client()
-
+        req_id = str(uuid.uuid4())
         headers = {
             "Content-Type": "application/json",
+            "X-Request-Id": req_id,           
             **self.headers,
         }
 
-        response = await client.post(
-            self.webhook_url,
-            json=framework_input,
-            headers=headers,
-        )
-        response.raise_for_status()
+     for attempt in range(self.max_retries + 1):
+        start = time.monotonic()
+        try:
+            resp = await client.post(self.webhook_url, json=framework_input, headers=headers)
+            dur_ms = int((time.monotonic() - start) * 1000)
 
-        return response.json()
+            # 4xx 
+            if 400 <= resp.status_code < 500:
+                text = (await resp.aread()).decode(errors="ignore")
+                raise ValueError(f"n8n webhook returned {resp.status_code} (req_id={req_id}, {dur_ms}ms): {text[:512]}")
+
+            # 5xx raise_for_status
+            resp.raise_for_status()
+            return resp.json()
+
+        except HTTPStatusError as e:
+            # only 5xx
+            if attempt < self.max_retries:
+                await asyncio.sleep(self.backoff * (2 ** attempt))
+                continue
+            raise RuntimeError(f"n8n upstream 5xx after retries (req_id={req_id}): {e}") from e
+
+        except (ConnectError, ReadTimeout) as e:
+            if attempt < self.max_retries:
+                await asyncio.sleep(self.backoff * (2 ** attempt))
+                continue
 
     async def from_framework(
         self, framework_output: Dict[str, Any], params: MessageSendParams
