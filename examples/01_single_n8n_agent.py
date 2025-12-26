@@ -54,7 +54,7 @@ async def setup_agent():
     agent_card = AgentCard(
         name="N8n Math Agent",
         description="Math operations agent powered by an n8n workflow. Can perform calculations, solve equations, and provide mathematical insights.",
-        url="http://localhost:8000",
+        url="http://localhost:9000",
         version="1.0.0",
         default_input_modes=["text"],
         default_output_modes=["text"],
@@ -87,9 +87,9 @@ def main():
     adapter, agent_card, webhook_url = asyncio.run(setup_agent())
 
     # Start serving the agent (this will block)
-    print("Starting N8n Math Agent on port 8000...")
+    print(f"Starting N8n Math Agent on port 9000...")
     print(f"Webhook URL: {webhook_url}")
-    serve_agent(agent_card=agent_card, adapter=adapter, port=8000)
+    serve_agent(agent_card=agent_card, adapter=adapter, port=9000)
 
 
 if __name__ == "__main__":
