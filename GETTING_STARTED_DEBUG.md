@@ -17,13 +17,14 @@ Complete environment setup and run your first debug test in 5 minutes.
 ### Method 1: Automatic Setup (Recommended)
 
 ```bash
-cd "/Users/caijiangnan/Desktop/HYBRO AI/multiple-agents/hybro open source/a2a-adapter"
+cd "/a2a-adapter"
 
 # Run setup script
 ./setup_dev.sh
 ```
 
 This script will automatically:
+
 - ✅ Check Python version
 - ✅ Create virtual environment
 - ✅ Install development dependencies
@@ -32,7 +33,7 @@ This script will automatically:
 ### Method 2: Manual Setup
 
 ```bash
-cd "/Users/caijiangnan/Desktop/HYBRO AI/multiple-agents/hybro open source/a2a-adapter"
+cd "/a2a-adapter"
 
 # Create virtual environment
 python3 -m venv venv
@@ -58,6 +59,7 @@ python debug_scripts/01_simple_test.py
 ```
 
 **Expected output:**
+
 ```
 ============================================================
 🧪 A2A Adapters - Simple Local Test

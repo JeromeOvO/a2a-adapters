@@ -31,7 +31,7 @@ We are committed to providing a welcoming and inspiring community for all.
 
 **Before reporting a bug:**
 
-1. ✅ Check if the bug has already been reported in [Issues](https://github.com/hybro-ai/a2a-adapter/issues)
+1. ✅ Check if the bug has already been reported in [Issues](https://github.com/hybroai/a2a-adapter/issues)
 2. ✅ Search closed issues - it might have been fixed already
 3. ✅ Try to reproduce the bug with the latest version
 
@@ -80,7 +80,7 @@ Should wait up to 60 seconds before timing out.
 
 **Before suggesting a feature:**
 
-1. ✅ Check [Issues](https://github.com/hybro-ai/a2a-adapter/issues) for existing feature requests
+1. ✅ Check [Issues](https://github.com/hybroai/a2a-adapter/issues) for existing feature requests
 2. ✅ Consider if it fits the project's scope (A2A protocol adapter SDK)
 3. ✅ Think about the API design and backward compatibility
 
@@ -573,8 +573,8 @@ We follow [Semantic Versioning](https://semver.org/):
 **Need help? We're here for you!**
 
 - 📚 **Documentation** - Read [README.md](README.md) and [ARCHITECTURE.md](ARCHITECTURE.md)
-- 🐛 **Issues** - Check [existing issues](https://github.com/hybro-ai/a2a-adapter/issues) or create a new one
-- 💬 **Discussions** - Ask questions in [GitHub Discussions](https://github.com/hybro-ai/a2a-adapter/discussions)
+- 🐛 **Issues** - Check [existing issues](https://github.com/hybroai/a2a-adapter/issues) or create a new one
+- 💬 **Discussions** - Ask questions in [GitHub Discussions](https://github.com/hybroai/a2a-adapter/discussions)
 - 📧 **Contact** - Reach out to maintainers via GitHub
 
 ## 📝 Issue and PR Templates

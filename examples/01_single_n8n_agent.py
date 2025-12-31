@@ -12,28 +12,50 @@ Usage:
     python examples/01_single_n8n_agent.py
 """
 
-import asyncio
-import os
 
+import asyncio
+
+from a2a.types import AgentCapabilities, AgentCard, AgentSkill
 from a2a_adapter import load_a2a_agent, serve_agent
-from a2a.types import AgentCard, AgentCapabilities, AgentSkill
 
 
 async def setup_agent():
-    """Setup and return the agent configuration."""
-
+    """Set up and return the agent configuration."""
     # Configuration for the n8n adapter
-    # Replace with your actual n8n webhook URL
-    webhook_url = os.getenv(
-        "N8N_WEBHOOK_URL",
-        "http://localhost:5678/webhook/my-webhook"
+    webhook_url = "http://localhost:5678/webhook/my-webhook"
+
+    # Configuration for the agent card
+    agent_port = 9000
+    agent_name = "N8n Math Agent"
+    agent_description = "Math operations agent powered by an n8n workflow. Can " \
+        "perform calculations, solve equations, and provide mathematical insights."
+    agent_url = f"http://localhost:{agent_port}"
+    agent_version = "1.0.0"
+    agent_default_input_modes = ["text"]
+    agent_default_output_modes = ["text"]
+    agent_capabilities = AgentCapabilities(streaming=False)
+    agent_skills = [
+        AgentSkill(id="calculate",
+        name="calculate",
+        description="Perform mathematical calculations",
+        tags=["math", "calculation"]),
+        AgentSkill(id="solve_equation",
+        name="solve_equation",
+        description="Solve mathematical equations",
+        tags=["math", "equation"]),
+    ]
+    agent_card = AgentCard(
+        name=agent_name,
+        description=agent_description,
+        url=agent_url,
+        version=agent_version,
+        default_input_modes=agent_default_input_modes,
+        default_output_modes=agent_default_output_modes,
+        capabilities=agent_capabilities,
+        skills=agent_skills,
     )
 
     # Load the adapter with custom payload mapping
-    # This example configures the adapter to send:
-    #   {"name": "A2A Agent", "event": "<user message>"}
-    # Instead of the default:
-    #   {"message": "<user message>", "metadata": {...}}
     adapter = await load_a2a_agent({
         "adapter": "n8n",
         "webhook_url": webhook_url,
@@ -50,46 +72,19 @@ async def setup_agent():
         }
     })
 
-    # Define the agent card describing this agent's capabilities
-    agent_card = AgentCard(
-        name="N8n Math Agent",
-        description="Math operations agent powered by an n8n workflow. Can perform calculations, solve equations, and provide mathematical insights.",
-        url="http://localhost:9000",
-        version="1.0.0",
-        default_input_modes=["text"],
-        default_output_modes=["text"],
-        capabilities=AgentCapabilities(
-            streaming=False,  # n8n webhooks don't support streaming
-        ),
-        skills=[
-            AgentSkill(
-                id="calculate",
-                name="calculate",
-                description="Perform mathematical calculations",
-                tags=["math", "calculation"]
-            ),
-            AgentSkill(
-                id="solve_equation",
-                name="solve_equation",
-                description="Solve mathematical equations",
-                tags=["math", "equation"]
-            ),
-        ]
-    )
-
-    return adapter, agent_card, webhook_url
+    return adapter, agent_card, agent_port, webhook_url
 
 
 def main():
     """Main entry point - setup agent and start server."""
 
     # Run async setup
-    adapter, agent_card, webhook_url = asyncio.run(setup_agent())
+    adapter, agent_card, agent_port, webhook_url = asyncio.run(setup_agent())
 
     # Start serving the agent (this will block)
-    print(f"Starting N8n Math Agent on port 9000...")
+    print(f"Starting N8n Math Agent on port {agent_port}...")
     print(f"Webhook URL: {webhook_url}")
-    serve_agent(agent_card=agent_card, adapter=adapter, port=9000)
+    serve_agent(agent_card=agent_card, adapter=adapter, port=agent_port)
 
 
 if __name__ == "__main__":

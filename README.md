@@ -487,15 +487,15 @@ Apache-2.0 License - see [LICENSE](LICENSE) file for details.
 
 Built with ❤️ by [HYBRO AI](https://hybro.ai)
 
-Powered by the [A2A Protocol](https://github.com/a2a-protocol/a2a-protocol)
+Powered by the [A2A Protocol](https://github.com/a2aproject/A2A)
 
 ## 💬 Community & Support
 
 - 📚 **[Full Documentation](README.md)** - Complete API reference and guides
 - 🚀 **[Quick Start Guide](QUICKSTART.md)** - Get started in 5 minutes
 - 🏗️ **[Architecture Guide](ARCHITECTURE.md)** - Deep dive into design decisions
-- 🐛 **[Report Issues](https://github.com/hybro-ai/a2a-adapter/issues)** - Found a bug? Let us know!
-- 💬 **[Discussions](https://github.com/hybro-ai/a2a-adapter/discussions)** - Ask questions and share ideas
+- 🐛 **[Report Issues](https://github.com/hybroai/a2a-adapter/issues)** - Found a bug? Let us know!
+- 💬 **[Discussions](https://github.com/hybroai/a2a-adapter/discussions)** - Ask questions and share ideas
 - 🤝 **[Contributing Guide](CONTRIBUTING.md)** - Want to contribute? Start here!
 
 ## 📄 License
@@ -505,8 +505,8 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 ## 🙏 Acknowledgments
 
 - Built with ❤️ by [HYBRO AI](https://hybro.ai)
-- Powered by the [A2A Protocol](https://github.com/a2a-protocol/a2a-protocol)
-- Thanks to all [contributors](https://github.com/hybro-ai/a2a-adapter/graphs/contributors) who make this project better!
+- Powered by the [A2A Protocol](https://github.com/a2aproject/A2A)
+- Thanks to all [contributors](https://github.com/hybroai/a2a-adapter/graphs/contributors) who make this project better!
 
 ---
 
