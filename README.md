@@ -487,12 +487,6 @@ We welcome contributions from the community! Whether you're fixing bugs, adding 
 
 Apache-2.0 License - see [LICENSE](https://github.com/hybroai/a2a-adapter/blob/main/LICENSE) file for details.
 
-## Credits
-
-Built with ❤️ by [HYBRO AI](https://hybro.ai)
-
-Powered by the [A2A Protocol](https://github.com/a2aproject/A2A)
-
 ## 💬 Community & Support
 
 - 📚 **[Full Documentation](https://github.com/hybroai/a2a-adapter/blob/main/README.md)** - Complete API reference and guides
