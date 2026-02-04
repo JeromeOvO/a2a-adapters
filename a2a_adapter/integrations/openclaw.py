@@ -117,7 +117,7 @@ class OpenClawAgentAdapter(BaseAgentAdapter):
         session_id: str | None = None,
         agent_id: str | None = None,
         thinking: str = "low",
-        timeout: int = 300,
+        timeout: int = 600,
         openclaw_path: str = "openclaw",
         working_directory: str | None = None,
         env_vars: Dict[str, str] | None = None,
