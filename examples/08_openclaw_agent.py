@@ -79,7 +79,7 @@ async def setup_agent():
     
     # Define the agent card (A2A metadata)
     agent_card = AgentCard(
-        name="OpenClaw Agent",
+        name="Another OpenClaw Agent",
         description="Personal AI super agent powered by OpenClaw. Can help with a wide variety "
                     "of tasks including coding, research, automation, and more.",
         url=f"http://localhost:{AGENT_PORT}",
