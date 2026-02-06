@@ -26,6 +26,7 @@ import httpx
 from httpx import HTTPStatusError, ConnectError, ReadTimeout
 
 from a2a.types import (
+    Artifact,
     Message,
     MessageSendParams,
     Task,
@@ -337,7 +338,7 @@ class N8nAgentAdapter(BaseAgentAdapter):
                 history.append(params.message)
             history.append(response_message)
             
-            # Update task to completed state
+            # Update task to completed state with artifacts (A2A compliant)
             now = datetime.now(timezone.utc).isoformat()
             completed_task = Task(
                 id=task_id,
@@ -348,6 +349,13 @@ class N8nAgentAdapter(BaseAgentAdapter):
                     timestamp=now,
                 ),
                 history=history,
+                artifacts=[
+                    Artifact(
+                        artifact_id=str(uuid.uuid4()),
+                        name="response",
+                        parts=[Part(root=TextPart(text=response_text))],
+                    )
+                ],
             )
             
             await self.task_store.save(completed_task)
