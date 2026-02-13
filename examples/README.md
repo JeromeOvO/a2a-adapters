@@ -26,7 +26,8 @@ export OPENAI_API_KEY="your-key"
 | 02 | `02_single_crewai_agent.py` | CrewAI | - | 8001 | CrewAI crew → A2A server |
 | 03 | `03_single_langchain_agent.py` | LangChain | Yes | 8002 | LangChain chain → A2A server (streaming auto-detected) |
 | 04 | `04_single_agent_client.py` | httpx | - | - | **Client**: test any A2A agent |
-| 05 | `05_custom_adapter.py` | Custom | - | 8003 | Custom adapter (subclass or callable) |
+| 05 | `05_custom_adapter.py` | Custom | - | 8003 | Custom adapter (subclass BaseA2AAdapter) |
+| 06 | `06_langchain_client.py` | LangChain | - | - | **Client**: call A2A agent as LangChain tool |
 | 07 | `07_langgraph_server.py` | LangGraph | Yes | 9002 | LangGraph workflow → A2A server |
 | 08 | `08_openclaw_agent.py` | OpenClaw | - | 9008 | OpenClaw agent → A2A server |
 | 09 | `09_v02_quickstart.py` | Mixed | - | 9000 | Quick start: callable, n8n, custom |
