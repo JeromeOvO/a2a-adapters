@@ -8,7 +8,7 @@ Prerequisites:
 - The webhook accepts POST with {"message": "..."} and returns a response
 
 Usage:
-    python examples/01_single_n8n_agent.py
+    python examples/n8n_agent.py
 """
 
 from a2a_adapter import N8nAdapter, serve_agent

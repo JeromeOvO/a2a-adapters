@@ -22,7 +22,7 @@ That's it. Your agent is now A2A-compatible with auto-generated AgentCard, task 
 - **3-line setup** — `import`, `create`, `serve`
 - **6 built-in adapters** — n8n, LangChain, LangGraph, CrewAI, OpenClaw, Callable
 - **Streaming** — auto-detected for LangChain and LangGraph
-- **Auto AgentCard** — generated from adapter metadata, served at `/.well-known/agent-card.json`
+- **Auto AgentCard** — generated from adapter metadata, served at `/.well-known/agent.json`
 - **SDK-First** — delegates task management, SSE, push notifications to the A2A SDK
 - **Extensible** — `register_adapter()` for third-party frameworks
 - **Minimal surface** — implement `invoke()`, get a full A2A server
@@ -57,7 +57,7 @@ from a2a_adapter import LangChainAdapter, serve_agent
 
 chain = ChatPromptTemplate.from_template("Answer: {input}") | ChatOpenAI(model="gpt-4o-mini")
 adapter = LangChainAdapter(runnable=chain, input_key="input")
-serve_agent(adapter, port=9001)  # Streaming auto-detected!
+serve_agent(adapter, port=8002)  # Streaming auto-detected!
 ```
 
 ### LangGraph (with streaming)
@@ -76,7 +76,7 @@ serve_agent(adapter, port=9002)
 from a2a_adapter import CrewAIAdapter, serve_agent
 
 adapter = CrewAIAdapter(crew=your_crew, timeout=600)
-serve_agent(adapter, port=9003)
+serve_agent(adapter, port=8001)
 ```
 
 ### OpenClaw
@@ -85,7 +85,7 @@ serve_agent(adapter, port=9003)
 from a2a_adapter import OpenClawAdapter, serve_agent
 
 adapter = OpenClawAdapter(thinking="low", agent_id="main")
-serve_agent(adapter, port=9004)
+serve_agent(adapter, port=9008)
 ```
 
 ### Custom Function
@@ -111,7 +111,7 @@ class MyAdapter(BaseA2AAdapter):
     async def invoke(self, user_input: str, context_id: str | None = None) -> str:
         return f"You said: {user_input}"
 
-serve_agent(MyAdapter(), port=9006)
+serve_agent(MyAdapter(), port=8003)
 ```
 
 ## Architecture
@@ -230,11 +230,19 @@ v0.2 is backwards compatible — v0.1 code still works but emits deprecation war
 
 ## Examples
 
-The `examples/` directory contains working examples for each adapter. Run any example:
+The [`examples/`](examples/) directory contains working examples for each adapter:
 
 ```bash
-python examples/01_single_n8n_agent.py
+python examples/n8n_agent.py          # n8n
+python examples/langchain_agent.py    # LangChain (streaming)
+python examples/langgraph_server.py   # LangGraph (streaming)
+python examples/crewai_agent.py       # CrewAI
+python examples/openclaw_agent.py     # OpenClaw
+python examples/custom_adapter.py     # Custom BaseA2AAdapter
+python examples/single_agent_client.py  # Test any running agent
 ```
+
+See [examples/README.md](examples/README.md) for details.
 
 ## Testing
 

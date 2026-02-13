@@ -5,7 +5,7 @@ Subclass BaseA2AAdapter, implement invoke(), get a full A2A server.
 This example builds a simple keyword-based sentiment analyzer.
 
 Usage:
-    python examples/05_custom_adapter.py
+    python examples/custom_adapter.py
 """
 
 from a2a_adapter import BaseA2AAdapter, AdapterMetadata, serve_agent

@@ -6,9 +6,9 @@ Each adapter can be started with a single `serve_agent()` call.
 No manual AgentCard construction needed — it's auto-generated.
 
 Usage:
-    python examples/09_v02_quickstart.py callable   # Echo agent
-    python examples/09_v02_quickstart.py n8n        # n8n webhook
-    python examples/09_v02_quickstart.py custom     # Custom adapter class
+    python examples/v02_quickstart.py callable   # Echo agent
+    python examples/v02_quickstart.py n8n        # n8n webhook
+    python examples/v02_quickstart.py custom     # Custom adapter class
 """
 
 import sys

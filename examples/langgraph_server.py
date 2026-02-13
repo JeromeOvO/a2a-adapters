@@ -9,8 +9,8 @@ Prerequisites:
 - For LLM version: OPENAI_API_KEY set in environment
 
 Usage:
-    python examples/07_langgraph_server.py              # Demo (no LLM)
-    USE_LLM=true python examples/07_langgraph_server.py  # With OpenAI
+    python examples/langgraph_server.py              # Demo (no LLM)
+    USE_LLM=true python examples/langgraph_server.py  # With OpenAI
 """
 
 import os

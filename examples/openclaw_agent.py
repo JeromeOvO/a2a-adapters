@@ -8,7 +8,7 @@ Prerequisites:
 - OpenClaw configured: openclaw config set anthropic.apiKey "your-key"
 
 Usage:
-    python examples/08_openclaw_agent.py
+    python examples/openclaw_agent.py
 """
 
 from a2a_adapter import OpenClawAdapter, serve_agent

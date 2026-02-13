@@ -1,6 +1,6 @@
 # A2A Adapter Examples
 
-Each example demonstrates the **3-line pattern**: `import` → `adapter` → `serve_agent`.
+Each example demonstrates the **3-line pattern**: `import` -> `adapter` -> `serve_agent`.
 
 ## Prerequisites
 
@@ -14,23 +14,22 @@ pip install a2a-adapter[langgraph]     # + LangGraph
 ```
 
 ```bash
-# For LangChain/LangGraph examples
+# For LangChain/LangGraph/CrewAI examples
 export OPENAI_API_KEY="your-key"
 ```
 
 ## Examples
 
-| # | File | Framework | Streaming | Port | Description |
-|---|------|-----------|-----------|------|-------------|
-| 01 | `01_single_n8n_agent.py` | n8n | - | 9000 | n8n webhook → A2A server |
-| 02 | `02_single_crewai_agent.py` | CrewAI | - | 8001 | CrewAI crew → A2A server |
-| 03 | `03_single_langchain_agent.py` | LangChain | Yes | 8002 | LangChain chain → A2A server (streaming auto-detected) |
-| 04 | `04_single_agent_client.py` | httpx | - | - | **Client**: test any A2A agent |
-| 05 | `05_custom_adapter.py` | Custom | - | 8003 | Custom BaseA2AAdapter (sentiment analyzer) |
-| 06 | `06_langchain_client.py` | LangChain | - | 8006 | LangChain agent that delegates to remote A2A agents |
-| 07 | `07_langgraph_server.py` | LangGraph | Yes | 9002 | LangGraph workflow → A2A server |
-| 08 | `08_openclaw_agent.py` | OpenClaw | - | 9008 | OpenClaw agent → A2A server |
-| 09 | `09_v02_quickstart.py` | Mixed | - | 9000 | Quick start: callable, n8n, custom |
+| File | Framework | Streaming | Port | Description |
+|------|-----------|-----------|------|-------------|
+| `n8n_agent.py` | n8n | - | 9000 | n8n webhook -> A2A server |
+| `crewai_agent.py` | CrewAI | - | 8001 | CrewAI crew -> A2A server |
+| `langchain_agent.py` | LangChain | Yes | 8002 | LangChain chain -> A2A server (streaming auto-detected) |
+| `langgraph_server.py` | LangGraph | Yes | 9002 | LangGraph workflow -> A2A server |
+| `openclaw_agent.py` | OpenClaw | - | 9008 | OpenClaw agent -> A2A server |
+| `custom_adapter.py` | Custom | - | 8003 | Custom BaseA2AAdapter (sentiment analyzer) |
+| `single_agent_client.py` | httpx | - | - | **Client**: test any A2A agent |
+| `v02_quickstart.py` | Mixed | - | 9000 | Quick start: callable, n8n, custom |
 
 ## Quick Start
 
@@ -43,23 +42,21 @@ adapter = CallableAdapter(func=lambda inputs: f"Echo: {inputs['message']}", name
 serve_agent(adapter, port=9000)
 ```
 
-### n8n
+### Run any example
 
 ```bash
-python examples/01_single_n8n_agent.py
-```
-
-### LangChain (with streaming)
-
-```bash
-export OPENAI_API_KEY="your-key"
-python examples/03_single_langchain_agent.py
+python examples/n8n_agent.py            # n8n
+python examples/langchain_agent.py      # LangChain (streaming)
+python examples/langgraph_server.py     # LangGraph (streaming)
+python examples/crewai_agent.py         # CrewAI
+python examples/openclaw_agent.py       # OpenClaw
+python examples/custom_adapter.py       # Custom adapter (sentiment analyzer)
 ```
 
 ### Test any running agent
 
 ```bash
-python examples/04_single_agent_client.py
+python examples/single_agent_client.py
 ```
 
 ## Testing with curl

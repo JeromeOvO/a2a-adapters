@@ -9,7 +9,7 @@ Prerequisites:
 - OPENAI_API_KEY set in environment
 
 Usage:
-    python examples/03_single_langchain_agent.py
+    python examples/langchain_agent.py
 """
 
 from langchain_core.prompts import ChatPromptTemplate

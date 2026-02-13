@@ -5,10 +5,10 @@ This is a client example (not a server). Use it to test any A2A agent
 started by the other examples.
 
 Prerequisites:
-- An A2A agent server running (e.g., python examples/01_single_n8n_agent.py)
+- An A2A agent server running (e.g., python examples/n8n_agent.py)
 
 Usage:
-    python examples/04_single_agent_client.py
+    python examples/single_agent_client.py
 """
 
 import asyncio

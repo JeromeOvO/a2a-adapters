@@ -8,7 +8,7 @@ Prerequisites:
 - OPENAI_API_KEY set in environment
 
 Usage:
-    python examples/02_single_crewai_agent.py
+    python examples/crewai_agent.py
 """
 
 import os
