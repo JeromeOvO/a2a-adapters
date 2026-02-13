@@ -1,27 +1,34 @@
 """
-Example: Use a2a-adapter to call a remote A2A agent from LangChain
+Example: LangChain Agent that calls a remote A2A agent via a2a-adapter
 
-This wraps a remote A2A agent as a LangChain tool, so you can use it
-inside any LangChain chain or agent.
+Uses a2a-adapter's to_a2a() to host a LangChain ReAct agent as an A2A
+server. The LangChain agent has a tool that calls another remote A2A agent,
+showing how A2A agents can compose with each other.
 
 Prerequisites:
-- An A2A agent running on port 9000 (e.g., python examples/01_single_n8n_agent.py)
-- pip install langchain-openai httpx
+- pip install a2a-adapter[langchain]
+- OPENAI_API_KEY set in environment
+- Another A2A agent running on port 9000 (e.g., python examples/01_single_n8n_agent.py)
 
 Usage:
     python examples/06_langchain_client.py
 """
 
-import asyncio
 import json
 
 import httpx
 from langchain_core.tools import tool
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_openai import ChatOpenAI
 
+from a2a_adapter import LangChainAdapter, serve_agent
+
+
+# ── Tool: call a remote A2A agent ──
 
 @tool
-def ask_a2a_agent(question: str) -> str:
-    """Ask a remote A2A agent a question and return its answer."""
+def ask_remote_agent(question: str) -> str:
+    """Ask a remote A2A agent (running on port 9000) a question."""
     payload = {
         "jsonrpc": "2.0",
         "id": "1",
@@ -41,21 +48,25 @@ def ask_a2a_agent(question: str) -> str:
     return " ".join(p["text"] for p in parts if p.get("kind") == "text") or json.dumps(data)
 
 
-async def main():
-    from langchain_openai import ChatOpenAI
-    from langchain_core.messages import HumanMessage
+# ── LangChain agent with the tool ──
 
-    llm = ChatOpenAI(model="gpt-4o-mini").bind_tools([ask_a2a_agent])
+llm = ChatOpenAI(model="gpt-4o-mini", temperature=0).bind_tools([ask_remote_agent])
 
-    print("Asking LLM (with A2A agent tool)...")
-    resp = await llm.ainvoke([HumanMessage(content="What is 25 * 37 + 18? Use the tool.")])
-    print(f"Response: {resp}")
+chain = (
+    ChatPromptTemplate.from_messages([
+        ("system", "You are a helpful assistant. Use the ask_remote_agent tool to delegate questions to a specialist agent when needed."),
+        ("user", "{input}"),
+    ])
+    | llm
+)
 
-    # If the LLM made a tool call, execute it
-    for tc in resp.tool_calls:
-        result = ask_a2a_agent.invoke(tc["args"])
-        print(f"Tool result: {result}")
+# ── A2A: 3 lines ──
 
+adapter = LangChainAdapter(
+    runnable=chain,
+    input_key="input",
+    name="Orchestrator Agent",
+    description="LangChain agent that can delegate to remote A2A agents",
+)
 
-if __name__ == "__main__":
-    asyncio.run(main())
+serve_agent(adapter, port=8006)
