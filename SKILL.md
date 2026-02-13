@@ -1,11 +1,8 @@
----
-name: a2a-adapter-sdk
-description: Convert any AI agent into an A2A Protocol server using the a2a-adapter SDK. Use when the user wants to make an agent A2A-compatible, create an A2A server, wrap an agent with A2A protocol, or mentions a2a-adapter, A2A protocol, agent-to-agent, or BaseA2AAdapter.
----
+# a2a-adapter SDK — Agent Skill
 
-# a2a-adapter SDK
-
-Convert any AI agent into an [A2A Protocol](https://github.com/a2aproject/A2A) server.
+> This document teaches coding agents how to use the `a2a-adapter` SDK.
+> Feed this file to any AI coding assistant so it knows how to convert
+> AI agents into A2A Protocol servers using this library.
 
 ## Install
 
@@ -215,23 +212,38 @@ serve_agent(MyAdapter(), port=9000)
 ### `serve_agent()` — development server
 
 ```python
-serve_agent(adapter, host="0.0.0.0", port=9000, log_level="info")
+serve_agent(
+    adapter: BaseA2AAdapter,
+    agent_card: AgentCard | None = None,   # Override auto-generated card
+    host: str = "0.0.0.0",
+    port: int = 9000,
+    log_level: str = "info",
+    **kwargs,                              # Passed to uvicorn.run()
+)
 ```
 
 ### `to_a2a()` — production ASGI app
 
 ```python
-app = to_a2a(adapter)
+app = to_a2a(
+    adapter: BaseA2AAdapter,
+    agent_card: AgentCard | None = None,
+    task_store: TaskStore | None = None,   # Default: InMemoryTaskStore
+    **card_overrides,                      # name=, description=, url=, version=, streaming=
+)
 # Deploy: gunicorn app:app -k uvicorn.workers.UvicornWorker
 ```
-
-Accepts `agent_card=`, `task_store=`, and `**card_overrides` (name, url, etc.).
 
 ### `build_agent_card()` — generate AgentCard
 
 ```python
-card = build_agent_card(adapter, name="Override", url="http://prod:9000")
+card = build_agent_card(
+    adapter: BaseA2AAdapter,
+    **overrides,     # name=, description=, url=, version=, streaming=
+)
 ```
+
+Default url is `http://localhost:9000`. Override with `url="http://prod:8080"`.
 
 ## Config-Driven Loading
 
@@ -246,6 +258,8 @@ adapter = load_adapter({
 serve_agent(adapter)
 ```
 
+Valid adapter values: `"n8n"`, `"langchain"`, `"langgraph"`, `"crewai"`, `"openclaw"`, `"callable"`, or any registered name.
+
 ## Third-Party Adapter Registration
 
 ```python
@@ -259,6 +273,8 @@ class MyFrameworkAdapter(BaseA2AAdapter):
 # Now loadable via config:
 adapter = load_adapter({"adapter": "my_framework"})
 ```
+
+Registered adapters take priority over built-ins with the same name.
 
 ## Input Handling (all built-in adapters)
 
@@ -282,6 +298,33 @@ The `AdapterAgentExecutor` bridge handles:
 
 Users never interact with the bridge layer directly.
 
+## API Quick Reference
+
+### BaseA2AAdapter
+
+| Method | Required | Signature | Description |
+|---|---|---|---|
+| `invoke` | **Yes** | `async (str, str\|None) -> str` | Execute agent, return text |
+| `stream` | No | `async (str, str\|None) -> AsyncIterator[str]` | Yield text chunks |
+| `cancel` | No | `async () -> None` | Cancel current execution |
+| `close` | No | `async () -> None` | Release resources |
+| `get_metadata` | No | `() -> AdapterMetadata` | Metadata for AgentCard |
+| `supports_streaming` | No | `() -> bool` | Auto-detects from stream() override |
+
+### AdapterMetadata
+
+```python
+AdapterMetadata(
+    name="",                          # Agent name (defaults to class name in card)
+    description="",                   # What the agent does
+    version="1.0.0",                  # Semantic version
+    skills=[],                        # List of skill dicts: [{"id", "name", "description", "tags"}]
+    input_modes=["text"],             # Supported input MIME types
+    output_modes=["text"],            # Supported output MIME types
+    streaming=False,                  # Whether adapter supports streaming
+)
+```
+
 ## Decision Guide
 
 | Scenario | Use |
@@ -296,8 +339,3 @@ Users never interact with the bridge layer directly.
 | Need streaming | Implement `stream()` or use LangChain/LangGraph (auto) |
 | Production deploy | `to_a2a(adapter)` → ASGI server |
 | Config-driven | `load_adapter({"adapter": "n8n", ...})` |
-
-## Additional Resources
-
-- For constructor parameter details, see [reference.md](reference.md)
-- For architecture diagrams, see `ARCHITECTURE.md` in repo root
