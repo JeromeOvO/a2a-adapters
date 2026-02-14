@@ -19,24 +19,24 @@ from a2a_adapter.loader import load_adapter, register_adapter, _REGISTRY
 class MinimalAdapter(BaseA2AAdapter):
     """Minimal adapter that only implements invoke()."""
 
-    async def invoke(self, user_input, context_id=None):
+    async def invoke(self, user_input, context_id=None, **kwargs):
         return f"echo: {user_input}"
 
 
 class StreamAdapter(BaseA2AAdapter):
     """Adapter with stream() override."""
 
-    async def invoke(self, user_input, context_id=None):
+    async def invoke(self, user_input, context_id=None, **kwargs):
         return "full"
 
-    async def stream(self, user_input, context_id=None):
+    async def stream(self, user_input, context_id=None, **kwargs):
         yield "chunk"
 
 
 class MetadataAdapter(BaseA2AAdapter):
     """Adapter with custom metadata."""
 
-    async def invoke(self, user_input, context_id=None):
+    async def invoke(self, user_input, context_id=None, **kwargs):
         return "ok"
 
     def get_metadata(self):
@@ -59,7 +59,7 @@ class CloseTracker(BaseA2AAdapter):
     def __init__(self):
         self.closed = False
 
-    async def invoke(self, user_input, context_id=None):
+    async def invoke(self, user_input, context_id=None, **kwargs):
         return "ok"
 
     async def close(self):
@@ -203,7 +203,7 @@ def test_build_card_streaming_override():
 
 def test_build_card_skills_with_tags():
     class SkillAdapter(BaseA2AAdapter):
-        async def invoke(self, user_input, context_id=None):
+        async def invoke(self, user_input, context_id=None, **kwargs):
             return ""
 
         def get_metadata(self):
@@ -286,7 +286,7 @@ def test_register_and_load():
 
     @register_adapter("test_custom_framework")
     class TestCustomAdapter(BaseA2AAdapter):
-        async def invoke(self, user_input, context_id=None):
+        async def invoke(self, user_input, context_id=None, **kwargs):
             return "custom"
 
     try:
@@ -301,11 +301,11 @@ def test_register_overwrite_warns(caplog):
     import logging
 
     class AdapterA(BaseA2AAdapter):
-        async def invoke(self, user_input, context_id=None):
+        async def invoke(self, user_input, context_id=None, **kwargs):
             return "a"
 
     class AdapterB(BaseA2AAdapter):
-        async def invoke(self, user_input, context_id=None):
+        async def invoke(self, user_input, context_id=None, **kwargs):
             return "b"
 
     try:
@@ -323,7 +323,7 @@ def test_register_priority_over_builtin():
 
     @register_adapter("callable")
     class OverrideCallable(BaseA2AAdapter):
-        async def invoke(self, user_input, context_id=None):
+        async def invoke(self, user_input, context_id=None, **kwargs):
             return "overridden"
 
     try:

@@ -108,7 +108,7 @@ For full control, subclass `BaseA2AAdapter`:
 from a2a_adapter import BaseA2AAdapter, serve_agent
 
 class MyAdapter(BaseA2AAdapter):
-    async def invoke(self, user_input: str, context_id: str | None = None) -> str:
+    async def invoke(self, user_input: str, context_id: str | None = None, **kwargs) -> str:
         return f"You said: {user_input}"
 
 serve_agent(MyAdapter(), port=8003)
@@ -151,8 +151,8 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed design documentation, and [D
 
 | Method | Required | Description |
 |---|---|---|
-| `invoke(user_input, context_id)` | **Yes** | Execute agent, return text |
-| `stream(user_input, context_id)` | No | Yield text chunks (streaming) |
+| `invoke(user_input, context_id, **kwargs)` | **Yes** | Execute agent, return text |
+| `stream(user_input, context_id, **kwargs)` | No | Yield text chunks (streaming) |
 | `cancel()` | No | Cancel current execution |
 | `close()` | No | Release resources |
 | `get_metadata()` | No | Return `AdapterMetadata` for AgentCard |
@@ -195,7 +195,7 @@ from a2a_adapter import register_adapter, BaseA2AAdapter
 
 @register_adapter("my_framework")
 class MyFrameworkAdapter(BaseA2AAdapter):
-    async def invoke(self, user_input, context_id=None):
+    async def invoke(self, user_input, context_id=None, **kwargs):
         return "Hello from my framework!"
 
 # Now loadable via config:

@@ -72,6 +72,7 @@ class BaseA2AAdapter(ABC):
         self,
         user_input: str,
         context_id: str | None = None,
+        **kwargs,
     ) -> str:
         """Execute the agent and return a text response.
 
@@ -83,6 +84,13 @@ class BaseA2AAdapter(ABC):
                 using SDK's RequestContext.get_user_input().
             context_id: Conversation context ID for multi-turn support.
                 Same context_id = same conversation. None for single-turn.
+            **kwargs: Additional keyword arguments from the bridge layer.
+
+        Keyword Args:
+            context: The A2A SDK ``RequestContext`` object, providing access
+                to the full message including non-text parts (``FilePart``,
+                ``DataPart``, etc.). Access via ``kwargs.get('context')``.
+                Use ``context.message.parts`` to iterate over all parts.
 
         Returns:
             The agent's text response.
@@ -97,6 +105,7 @@ class BaseA2AAdapter(ABC):
         self,
         user_input: str,
         context_id: str | None = None,
+        **kwargs,
     ) -> AsyncIterator[str]:
         """Stream the agent response, yielding text chunks.
 
@@ -109,6 +118,11 @@ class BaseA2AAdapter(ABC):
         Args:
             user_input: The user's message as plain text.
             context_id: Conversation context ID for multi-turn support.
+            **kwargs: Additional keyword arguments from the bridge layer.
+
+        Keyword Args:
+            context: The A2A SDK ``RequestContext`` object. See
+                :meth:`invoke` for details.
 
         Yields:
             Text chunks of the agent's response.
@@ -125,11 +139,18 @@ class BaseA2AAdapter(ABC):
         """
         return type(self).stream is not BaseA2AAdapter.stream
 
-    async def cancel(self) -> None:
+    async def cancel(self, **kwargs) -> None:
         """Cancel the current execution. Optional.
 
         Override for frameworks where execution can be interrupted
         (e.g., OpenClaw can kill a subprocess).
+
+        Keyword Args:
+            context: The A2A SDK ``RequestContext`` for the task being
+                canceled. Use ``kwargs.get('context')`` to identify which
+                task to cancel (e.g., ``context.task_id``). This is
+                important for concurrent-safe cancellation when multiple
+                requests are in-flight.
         """
         pass
 

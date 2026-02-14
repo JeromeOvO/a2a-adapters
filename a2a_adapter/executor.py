@@ -93,7 +93,7 @@ class AdapterAgentExecutor(AgentExecutor):
     ) -> None:
         """Non-streaming execution: invoke() -> single artifact -> complete."""
         result_text = await self._adapter.invoke(
-            user_input, context.context_id
+            user_input, context.context_id, context=context
         )
 
         parts = [Part(root=TextPart(text=result_text))]
@@ -112,19 +112,29 @@ class AdapterAgentExecutor(AgentExecutor):
     ) -> None:
         """Streaming execution: stream() -> incremental artifacts -> complete."""
         chunks: list[str] = []
-        is_first = True
+        prev_chunk: str | None = None
 
         async for chunk in self._adapter.stream(
-            user_input, context.context_id
+            user_input, context.context_id, context=context
         ):
-            chunks.append(chunk)
-            parts = [Part(root=TextPart(text=chunk))]
+            if prev_chunk is not None:
+                chunks.append(prev_chunk)
+                parts = [Part(root=TextPart(text=prev_chunk))]
+                await updater.add_artifact(
+                    parts,
+                    append=len(chunks) > 1,
+                    last_chunk=False,
+                )
+            prev_chunk = chunk
+
+        if prev_chunk is not None:
+            chunks.append(prev_chunk)
+            parts = [Part(root=TextPart(text=prev_chunk))]
             await updater.add_artifact(
                 parts,
-                append=not is_first,
-                last_chunk=False,
+                append=len(chunks) > 1,
+                last_chunk=True,
             )
-            is_first = False
 
         full_text = "".join(chunks)
         message = new_agent_text_message(
@@ -147,7 +157,7 @@ class AdapterAgentExecutor(AgentExecutor):
         updater = TaskUpdater(event_queue, context.task_id, context.context_id)
 
         try:
-            await self._adapter.cancel()
+            await self._adapter.cancel(context=context)
         except Exception as e:
             logger.warning(
                 "Adapter cancel() raised for task %s: %s",

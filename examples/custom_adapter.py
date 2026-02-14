@@ -17,7 +17,7 @@ class SentimentAdapter(BaseA2AAdapter):
     POSITIVE = {"good", "great", "excellent", "happy", "love", "wonderful", "amazing"}
     NEGATIVE = {"bad", "terrible", "awful", "sad", "hate", "horrible", "poor"}
 
-    async def invoke(self, user_input: str, context_id: str | None = None) -> str:
+    async def invoke(self, user_input: str, context_id: str | None = None, **kwargs) -> str:
         words = set(user_input.lower().split())
         pos = len(words & self.POSITIVE)
         neg = len(words & self.NEGATIVE)

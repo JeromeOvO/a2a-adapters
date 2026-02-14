@@ -109,7 +109,7 @@ class LangGraphAdapter(BaseA2AAdapter):
         self._name = name
         self._description = description
 
-    async def invoke(self, user_input: str, context_id: str | None = None) -> str:
+    async def invoke(self, user_input: str, context_id: str | None = None, **kwargs) -> str:
         """Invoke the graph and return a text response."""
         inputs = self._build_inputs(user_input, context_id)
         result = await asyncio.wait_for(
@@ -117,7 +117,7 @@ class LangGraphAdapter(BaseA2AAdapter):
         )
         return self._extract_output(result)
 
-    async def stream(self, user_input: str, context_id: str | None = None) -> AsyncIterator[str]:
+    async def stream(self, user_input: str, context_id: str | None = None, **kwargs) -> AsyncIterator[str]:
         """Stream state deltas from the graph via astream()."""
         inputs = self._build_inputs(user_input, context_id)
         last_text = ""

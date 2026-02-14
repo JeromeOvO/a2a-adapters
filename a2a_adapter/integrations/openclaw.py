@@ -130,7 +130,7 @@ class OpenClawAdapter(BaseA2AAdapter):
         # Track current subprocess for cancel support
         self._current_process: AsyncProcess | None = None
 
-    async def invoke(self, user_input: str, context_id: str | None = None) -> str:
+    async def invoke(self, user_input: str, context_id: str | None = None, **kwargs) -> str:
         """Execute the OpenClaw CLI and return the response text."""
         import os
 
@@ -188,7 +188,7 @@ class OpenClawAdapter(BaseA2AAdapter):
 
         return self._extract_response_text(parsed)
 
-    async def cancel(self) -> None:
+    async def cancel(self, **kwargs) -> None:
         """Kill the running OpenClaw subprocess."""
         proc = self._current_process
         if proc and proc.returncode is None:

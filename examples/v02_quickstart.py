@@ -47,7 +47,7 @@ def start_custom_agent():
     from a2a_adapter import BaseA2AAdapter, AdapterMetadata, serve_agent
 
     class SentimentAdapter(BaseA2AAdapter):
-        async def invoke(self, user_input: str, context_id: str | None = None) -> str:
+        async def invoke(self, user_input: str, context_id: str | None = None, **kwargs) -> str:
             positive = ["good", "great", "happy", "love", "excellent"]
             negative = ["bad", "terrible", "sad", "hate", "awful"]
             text = user_input.lower()

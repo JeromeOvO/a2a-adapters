@@ -105,7 +105,7 @@ class CrewAIAdapter(BaseA2AAdapter):
         self._name = name
         self._description = description
 
-    async def invoke(self, user_input: str, context_id: str | None = None) -> str:
+    async def invoke(self, user_input: str, context_id: str | None = None, **kwargs) -> str:
         """Execute the crew and return the result as text."""
         inputs = self._build_inputs(user_input, context_id)
         try:

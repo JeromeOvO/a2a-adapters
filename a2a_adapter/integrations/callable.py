@@ -87,13 +87,13 @@ class CallableAdapter(BaseA2AAdapter):
         self._name = name
         self._description = description
 
-    async def invoke(self, user_input: str, context_id: str | None = None) -> str:
+    async def invoke(self, user_input: str, context_id: str | None = None, **kwargs) -> str:
         """Call the function and return a text response."""
         inputs = {"message": user_input, "context_id": context_id}
         result = await self.func(inputs)
         return self._extract_text(result)
 
-    async def stream(self, user_input: str, context_id: str | None = None) -> AsyncIterator[str]:
+    async def stream(self, user_input: str, context_id: str | None = None, **kwargs) -> AsyncIterator[str]:
         """Stream chunks from an async generator function."""
         inputs = {"message": user_input, "context_id": context_id}
         async for chunk in self.func(inputs):

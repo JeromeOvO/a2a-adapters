@@ -127,7 +127,7 @@ class N8nAdapter(BaseA2AAdapter):
         self._description = description
         self._client: httpx.AsyncClient | None = None
 
-    async def invoke(self, user_input: str, context_id: str | None = None) -> str:
+    async def invoke(self, user_input: str, context_id: str | None = None, **kwargs) -> str:
         """Send message to n8n webhook and return the response text."""
         payload = self._build_payload(user_input, context_id)
         response = await self._post_with_retry(payload)

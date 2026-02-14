@@ -123,7 +123,7 @@ For full control, subclass `BaseA2AAdapter`:
 from a2a_adapter import BaseA2AAdapter, AdapterMetadata, serve_agent
 
 class MyAdapter(BaseA2AAdapter):
-    async def invoke(self, user_input: str, context_id: str | None = None) -> str:
+    async def invoke(self, user_input: str, context_id: str | None = None, **kwargs) -> str:
         return f"You said: {user_input}"
 
     def get_metadata(self) -> AdapterMetadata:
@@ -239,7 +239,7 @@ from a2a_adapter import register_adapter, BaseA2AAdapter
 
 @register_adapter("my_framework")
 class MyFrameworkAdapter(BaseA2AAdapter):
-    async def invoke(self, user_input, context_id=None):
+    async def invoke(self, user_input, context_id=None, **kwargs):
         return "Hello from my framework!"
 ```
 

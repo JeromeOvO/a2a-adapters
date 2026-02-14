@@ -170,12 +170,13 @@ from a2a_adapter import BaseA2AAdapter, AdapterMetadata, serve_agent
 
 class MyAdapter(BaseA2AAdapter):
     # REQUIRED: the only method you must implement
-    async def invoke(self, user_input: str, context_id: str | None = None) -> str:
+    async def invoke(self, user_input: str, context_id: str | None = None, **kwargs) -> str:
+        # kwargs['context'] provides the full A2A RequestContext if needed
         result = await call_my_framework(user_input)
         return str(result)
 
     # OPTIONAL: streaming support
-    async def stream(self, user_input: str, context_id: str | None = None):
+    async def stream(self, user_input: str, context_id: str | None = None, **kwargs):
         async for chunk in my_framework_stream(user_input):
             yield str(chunk)
 
@@ -267,7 +268,7 @@ from a2a_adapter import register_adapter, BaseA2AAdapter, load_adapter
 
 @register_adapter("my_framework")
 class MyFrameworkAdapter(BaseA2AAdapter):
-    async def invoke(self, user_input, context_id=None):
+    async def invoke(self, user_input, context_id=None, **kwargs):
         return "result"
 
 # Now loadable via config:

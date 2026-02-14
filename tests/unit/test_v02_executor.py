@@ -22,7 +22,7 @@ class InvokeOnlyAdapter(BaseA2AAdapter):
     def __init__(self, response="test response"):
         self._response = response
 
-    async def invoke(self, user_input, context_id=None):
+    async def invoke(self, user_input, context_id=None, **kwargs):
         return self._response
 
 
@@ -32,10 +32,10 @@ class StreamingAdapter(BaseA2AAdapter):
     def __init__(self, chunks=None):
         self._chunks = chunks or ["hello", " ", "world"]
 
-    async def invoke(self, user_input, context_id=None):
+    async def invoke(self, user_input, context_id=None, **kwargs):
         return "".join(self._chunks)
 
-    async def stream(self, user_input, context_id=None):
+    async def stream(self, user_input, context_id=None, **kwargs):
         for chunk in self._chunks:
             yield chunk
 
@@ -43,17 +43,17 @@ class StreamingAdapter(BaseA2AAdapter):
 class FailingAdapter(BaseA2AAdapter):
     """Adapter that raises during invoke()."""
 
-    async def invoke(self, user_input, context_id=None):
+    async def invoke(self, user_input, context_id=None, **kwargs):
         raise RuntimeError("agent crashed")
 
 
 class FailingStreamAdapter(BaseA2AAdapter):
     """Adapter that raises during stream()."""
 
-    async def invoke(self, user_input, context_id=None):
+    async def invoke(self, user_input, context_id=None, **kwargs):
         return "should not reach"
 
-    async def stream(self, user_input, context_id=None):
+    async def stream(self, user_input, context_id=None, **kwargs):
         yield "partial"
         raise RuntimeError("stream crashed")
 
@@ -64,20 +64,20 @@ class CancellableAdapter(BaseA2AAdapter):
     def __init__(self):
         self.cancel_called = False
 
-    async def invoke(self, user_input, context_id=None):
+    async def invoke(self, user_input, context_id=None, **kwargs):
         return "done"
 
-    async def cancel(self):
+    async def cancel(self, **kwargs):
         self.cancel_called = True
 
 
 class FailingCancelAdapter(BaseA2AAdapter):
     """Adapter whose cancel() raises."""
 
-    async def invoke(self, user_input, context_id=None):
+    async def invoke(self, user_input, context_id=None, **kwargs):
         return "done"
 
-    async def cancel(self):
+    async def cancel(self, **kwargs):
         raise RuntimeError("cancel failed")
 
 
@@ -138,7 +138,7 @@ async def test_execute_invoke_passes_context():
             self.received_input = None
             self.received_ctx = None
 
-        async def invoke(self, user_input, context_id=None):
+        async def invoke(self, user_input, context_id=None, **kwargs):
             self.received_input = user_input
             self.received_ctx = context_id
             return "ok"

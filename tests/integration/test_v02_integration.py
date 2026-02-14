@@ -21,7 +21,7 @@ from a2a_adapter import BaseA2AAdapter, AdapterMetadata, to_a2a, build_agent_car
 class EchoAdapter(BaseA2AAdapter):
     """Simple echo adapter for integration testing."""
 
-    async def invoke(self, user_input, context_id=None):
+    async def invoke(self, user_input, context_id=None, **kwargs):
         return f"Echo: {user_input}"
 
     def get_metadata(self):
@@ -36,10 +36,10 @@ class EchoAdapter(BaseA2AAdapter):
 class StreamEchoAdapter(BaseA2AAdapter):
     """Streaming echo adapter for integration testing."""
 
-    async def invoke(self, user_input, context_id=None):
+    async def invoke(self, user_input, context_id=None, **kwargs):
         return f"Echo: {user_input}"
 
-    async def stream(self, user_input, context_id=None):
+    async def stream(self, user_input, context_id=None, **kwargs):
         for word in user_input.split():
             yield word + " "
 
@@ -54,7 +54,7 @@ class StreamEchoAdapter(BaseA2AAdapter):
 class FailAdapter(BaseA2AAdapter):
     """Adapter that always fails — for error handling tests."""
 
-    async def invoke(self, user_input, context_id=None):
+    async def invoke(self, user_input, context_id=None, **kwargs):
         raise RuntimeError("intentional failure")
 
 
