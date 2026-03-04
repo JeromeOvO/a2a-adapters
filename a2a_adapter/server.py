@@ -104,6 +104,10 @@ def serve_agent(
         >>> adapter = N8nAdapter(webhook_url="http://localhost:5678/webhook/agent")
         >>> serve_agent(adapter, port=9000)
     """
+    if agent_card is None:
+        display_host = "localhost" if host in ("0.0.0.0", "::") else host
+        agent_card = build_agent_card(adapter, url=f"http://{display_host}:{port}")
+
     app = to_a2a(adapter, agent_card)
     uvicorn.run(app, host=host, port=port, log_level=log_level, **kwargs)
 
