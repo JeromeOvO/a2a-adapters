@@ -16,10 +16,15 @@ Replaces: client.py (deprecated in v0.2, removed in v0.3)
 import logging
 from typing import Any
 
+import httpx
 import uvicorn
 from a2a.server.apps import A2AStarletteApplication
 from a2a.server.request_handlers import DefaultRequestHandler
-from a2a.server.tasks import InMemoryTaskStore
+from a2a.server.tasks import (
+    BasePushNotificationSender,
+    InMemoryPushNotificationConfigStore,
+    InMemoryTaskStore,
+)
 from a2a.server.tasks.task_store import TaskStore
 from a2a.types import AgentCapabilities, AgentCard, AgentSkill
 
@@ -63,10 +68,19 @@ def to_a2a(
     if agent_card is None:
         agent_card = build_agent_card(adapter, **card_overrides)
 
+    task_store = task_store or InMemoryTaskStore()
+    push_config_store = InMemoryPushNotificationConfigStore()
+    push_sender = BasePushNotificationSender(
+        httpx_client=httpx.AsyncClient(),
+        config_store=push_config_store,
+    )
+
     executor = AdapterAgentExecutor(adapter)
     handler = DefaultRequestHandler(
         agent_executor=executor,
-        task_store=task_store or InMemoryTaskStore(),
+        task_store=task_store,
+        push_config_store=push_config_store,
+        push_sender=push_sender,
     )
 
     app_builder = A2AStarletteApplication(
@@ -152,6 +166,7 @@ def build_agent_card(
         version=overrides.get("version", meta.version),
         capabilities=AgentCapabilities(
             streaming=streaming,
+            push_notifications=True,
         ),
         skills=[
             AgentSkill(
