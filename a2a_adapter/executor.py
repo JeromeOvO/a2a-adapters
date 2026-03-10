@@ -91,18 +91,51 @@ class AdapterAgentExecutor(AgentExecutor):
         user_input: str,
         context: RequestContext,
     ) -> None:
-        """Non-streaming execution: invoke() -> single artifact -> complete."""
-        result_text = await self._adapter.invoke(
+        """Non-streaming execution: invoke() -> single artifact -> complete.
+
+        Handles both text-only (str) and multimodal (list[Part]) responses.
+        """
+        result = await self._adapter.invoke(
             user_input, context.context_id, context=context
         )
 
-        parts = [Part(root=TextPart(text=result_text))]
+        # Type detection: str (backward compatible) or list[Part] (multimodal)
+        if isinstance(result, str):
+            # Backward compatible path: text-only
+            parts = [Part(root=TextPart(text=result))]
+            response_text = result
+        elif isinstance(result, list):
+            # Multimodal path: list[Part]
+            parts = result
+            response_text = self._extract_text_from_parts(parts)
+        else:
+            raise TypeError(
+                f"Adapter invoke() returned unexpected type {type(result).__name__}. "
+                f"Expected str or list[Part]."
+            )
+
         await updater.add_artifact(parts, name="response")
 
         message = new_agent_text_message(
-            result_text, context.context_id, context.task_id
+            response_text, context.context_id, context.task_id
         )
         await updater.complete(message=message)
+
+    def _extract_text_from_parts(self, parts: list[Part]) -> str:
+        """Extract text content from multimodal parts for completion message.
+
+        Args:
+            parts: List of Part objects (may contain TextPart, FilePart, etc.)
+
+        Returns:
+            Concatenated text from all TextPart objects, or a placeholder
+            if no text parts are found.
+        """
+        texts = []
+        for part in parts:
+            if hasattr(part.root, 'text'):
+                texts.append(part.root.text)
+        return " ".join(texts) if texts else "[Non-text response]"
 
     async def _execute_streaming(
         self,
@@ -110,16 +143,30 @@ class AdapterAgentExecutor(AgentExecutor):
         user_input: str,
         context: RequestContext,
     ) -> None:
-        """Streaming execution: stream() -> incremental artifacts -> complete."""
-        chunks: list[str] = []
-        prev_chunk: str | None = None
+        """Streaming execution: stream() -> incremental artifacts -> complete.
+
+        Handles both text chunks (str) and multimodal chunks (Part).
+        """
+        chunks: list[str | Part] = []
+        prev_chunk: str | Part | None = None
 
         async for chunk in self._adapter.stream(
             user_input, context.context_id, context=context
         ):
             if prev_chunk is not None:
                 chunks.append(prev_chunk)
-                parts = [Part(root=TextPart(text=prev_chunk))]
+
+                # Convert chunk to Parts
+                if isinstance(prev_chunk, str):
+                    parts = [Part(root=TextPart(text=prev_chunk))]
+                elif isinstance(prev_chunk, Part):
+                    parts = [prev_chunk]
+                else:
+                    raise TypeError(
+                        f"Stream yielded unexpected type {type(prev_chunk).__name__}. "
+                        f"Expected str or Part."
+                    )
+
                 await updater.add_artifact(
                     parts,
                     append=len(chunks) > 1,
@@ -129,18 +176,47 @@ class AdapterAgentExecutor(AgentExecutor):
 
         if prev_chunk is not None:
             chunks.append(prev_chunk)
-            parts = [Part(root=TextPart(text=prev_chunk))]
+
+            # Convert final chunk to Parts
+            if isinstance(prev_chunk, str):
+                parts = [Part(root=TextPart(text=prev_chunk))]
+            elif isinstance(prev_chunk, Part):
+                parts = [prev_chunk]
+            else:
+                raise TypeError(
+                    f"Stream yielded unexpected type {type(prev_chunk).__name__}. "
+                    f"Expected str or Part."
+                )
+
             await updater.add_artifact(
                 parts,
                 append=len(chunks) > 1,
                 last_chunk=True,
             )
 
-        full_text = "".join(chunks)
+        full_text = self._concatenate_chunks(chunks)
         message = new_agent_text_message(
             full_text, context.context_id, context.task_id
         )
         await updater.complete(message=message)
+
+    def _concatenate_chunks(self, chunks: list[str | Part]) -> str:
+        """Concatenate text from streaming chunks for completion message.
+
+        Args:
+            chunks: List of chunks (str or Part objects)
+
+        Returns:
+            Concatenated text from all text chunks, or a placeholder
+            if no text content is found.
+        """
+        texts = []
+        for chunk in chunks:
+            if isinstance(chunk, str):
+                texts.append(chunk)
+            elif isinstance(chunk, Part) and hasattr(chunk.root, 'text'):
+                texts.append(chunk.root.text)
+        return "".join(texts) if texts else "[Streamed non-text content]"
 
     async def cancel(
         self, context: RequestContext, event_queue: EventQueue

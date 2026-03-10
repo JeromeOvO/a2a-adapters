@@ -6,7 +6,7 @@ AdapterMetadata dataclass. Framework-specific adapters implement only
 invoke() to become A2A-compatible.
 
 Design philosophy:
-    The adapter answers ONE question: "Given text, return text."
+    The adapter answers ONE question: "Given text, return text or multimodal content."
     Everything else (task management, SSE streaming, push notifications,
     resubscription, state persistence) is handled by the A2A SDK via
     the AdapterAgentExecutor bridge layer.
@@ -16,6 +16,8 @@ import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import AsyncIterator
+
+from a2a.types import Part
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +59,7 @@ class BaseA2AAdapter(ABC):
     """The only interface framework developers need to implement.
 
     Design philosophy:
-        - invoke() is the single required method — answers "given text, return text"
+        - invoke() is the single required method — answers "given text, return text or multimodal"
         - stream() is optional — for frameworks that support token-by-token output
         - cancel() is optional — for frameworks where execution can be interrupted
         - close() is optional — for resource cleanup (HTTP clients, subprocesses)
@@ -68,9 +70,9 @@ class BaseA2AAdapter(ABC):
     the AdapterAgentExecutor bridge layer.
 
     Three levels of control:
-        Level 1: invoke(input) -> str             (90% of use cases)
-        Level 2: stream(input) -> AsyncIterator   (streaming frameworks)
-        Level 3: Implement AgentExecutor directly  (full SDK access)
+        Level 1: invoke(input) -> str | list[Part]     (90% of use cases)
+        Level 2: stream(input) -> AsyncIterator        (streaming frameworks)
+        Level 3: Implement AgentExecutor directly      (full SDK access)
     """
 
     @abstractmethod
@@ -79,8 +81,8 @@ class BaseA2AAdapter(ABC):
         user_input: str,
         context_id: str | None = None,
         **kwargs,
-    ) -> str:
-        """Execute the agent and return a text response.
+    ) -> str | list[Part]:
+        """Execute the agent and return a response.
 
         This is the ONLY method you must implement.
 
@@ -99,7 +101,25 @@ class BaseA2AAdapter(ABC):
                 Use ``context.message.parts`` to iterate over all parts.
 
         Returns:
-            The agent's text response.
+            str: Text-only response (backward compatible).
+            list[Part]: Multimodal response with text, files, images, etc.
+
+        Example:
+            # Text-only response (backward compatible)
+            async def invoke(self, user_input, context_id=None, **kwargs):
+                return "Hello, world!"
+
+            # Multimodal response with text and file
+            from a2a.types import Part, TextPart, FilePart, FileWithUri
+            async def invoke(self, user_input, context_id=None, **kwargs):
+                return [
+                    Part(root=TextPart(text="Generated report")),
+                    Part(root=FilePart(file=FileWithUri(
+                        uri="http://example.com/report.pdf",
+                        name="report.pdf",
+                        mimeType="application/pdf"
+                    )))
+                ]
 
         Raises:
             Any exception will be caught by the bridge layer and converted
@@ -112,8 +132,8 @@ class BaseA2AAdapter(ABC):
         user_input: str,
         context_id: str | None = None,
         **kwargs,
-    ) -> AsyncIterator[str]:
-        """Stream the agent response, yielding text chunks.
+    ) -> AsyncIterator[str | Part]:
+        """Stream the agent response, yielding chunks.
 
         Optional. If not implemented, the bridge layer falls back to invoke()
         and delivers the full result as a single event.
@@ -131,7 +151,24 @@ class BaseA2AAdapter(ABC):
                 :meth:`invoke` for details.
 
         Yields:
-            Text chunks of the agent's response.
+            str: Text chunk (backward compatible).
+            Part: Multimodal content chunk (images, files, etc.).
+
+        Example:
+            # Text-only streaming (backward compatible)
+            async def stream(self, user_input, context_id=None, **kwargs):
+                for token in ["Hello", ", ", "world", "!"]:
+                    yield token
+
+            # Multimodal streaming
+            async def stream(self, user_input, context_id=None, **kwargs):
+                from a2a.types import Part, TextPart, FilePart, FileWithUri
+                yield "Generating chart..."
+                yield Part(root=FilePart(file=FileWithUri(
+                    uri="http://example.com/chart.png",
+                    name="chart.png",
+                    mimeType="image/png"
+                )))
         """
         raise NotImplementedError
         # Make this an async generator so type checkers are happy

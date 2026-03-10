@@ -15,6 +15,7 @@ Supports flexible input handling:
 """
 
 import asyncio
+import base64
 import json
 import logging
 import time
@@ -25,8 +26,11 @@ from typing import Any, Callable, Dict
 import httpx
 from httpx import ConnectError, HTTPStatusError, ReadTimeout
 
+from a2a.server.agent_execution import RequestContext
 from a2a.types import (
     Artifact,
+    FilePart,
+    FileWithUri,
     Message,
     MessageSendParams,
     Part,
@@ -93,6 +97,10 @@ class N8nAdapter(BaseA2AAdapter):
         parse_json_input: bool = True,
         input_mapper: Callable[[str, str | None], Dict[str, Any]] | None = None,
         default_inputs: Dict[str, Any] | None = None,
+        multimodal_mode: bool = False,
+        file_field: str = "files",
+        image_field: str = "images",
+        encode_files_base64: bool = True,
         name: str = "",
         description: str = "",
         skills: list[dict] | None = None,
@@ -114,6 +122,10 @@ class N8nAdapter(BaseA2AAdapter):
             input_mapper: Custom function for input transformation.
                 Signature: (raw_input: str, context_id: str | None) -> dict.
             default_inputs: Default values to merge into payload.
+            multimodal_mode: Enable multimodal support for files/images (default: False).
+            file_field: JSON field name for file attachments (default: "files").
+            image_field: JSON field name for image attachments (default: "images").
+            encode_files_base64: Encode files as base64 in JSON (default: True).
             name: Optional agent name for AgentCard generation.
             description: Optional agent description for AgentCard generation.
             skills: Optional list of skill dicts for AgentCard generation.
@@ -131,6 +143,10 @@ class N8nAdapter(BaseA2AAdapter):
         self.parse_json_input = parse_json_input
         self.input_mapper = input_mapper
         self.default_inputs = default_inputs or {}
+        self.multimodal_mode = multimodal_mode
+        self.file_field = file_field
+        self.image_field = image_field
+        self.encode_files_base64 = encode_files_base64
         self._name = name
         self._description = description
         self._skills = skills or []
@@ -139,11 +155,31 @@ class N8nAdapter(BaseA2AAdapter):
         self._icon_url = icon_url
         self._client: httpx.AsyncClient | None = None
 
-    async def invoke(self, user_input: str, context_id: str | None = None, **kwargs) -> str:
-        """Send message to n8n webhook and return the response text."""
-        payload = self._build_payload(user_input, context_id)
+    async def invoke(
+        self, user_input: str, context_id: str | None = None, **kwargs
+    ) -> str | list[Part]:
+        """Send message to n8n webhook and return the response.
+
+        Returns:
+            str: Text-only response (when multimodal_mode=False).
+            list[Part]: Multimodal response with text/files (when multimodal_mode=True).
+        """
+        context = kwargs.get("context")
+
+        # Build payload with optional multimodal support
+        if self.multimodal_mode and context:
+            payload = await self._build_multimodal_payload(user_input, context_id, context)
+        else:
+            payload = self._build_payload(user_input, context_id)
+
+        # Send to n8n webhook
         response = await self._post_with_retry(payload)
-        return self._extract_response_text(response)
+
+        # Extract response (text or multimodal)
+        if self.multimodal_mode:
+            return self._extract_response(response)
+        else:
+            return self._extract_response_text(response)
 
     async def close(self) -> None:
         """Close the HTTP client."""
@@ -153,10 +189,37 @@ class N8nAdapter(BaseA2AAdapter):
 
     def get_metadata(self) -> AdapterMetadata:
         """Return adapter metadata for AgentCard generation."""
+        input_modes = ["text"]
+        output_modes = ["text"]
+
+        # Advertise multimodal capabilities when enabled
+        if self.multimodal_mode:
+            input_modes.extend(
+                [
+                    "image/jpeg",
+                    "image/png",
+                    "image/gif",
+                    "image/webp",
+                    "application/pdf",
+                    "application/json",
+                    "application/octet-stream",
+                ]
+            )
+            output_modes.extend(
+                [
+                    "image/jpeg",
+                    "image/png",
+                    "application/pdf",
+                    "application/json",
+                ]
+            )
+
         return AdapterMetadata(
             name=self._name or "N8nAdapter",
             description=self._description,
             skills=self._skills,
+            input_modes=input_modes,
+            output_modes=output_modes,
             provider=self._provider,
             documentation_url=self._documentation_url,
             icon_url=self._icon_url,
@@ -200,6 +263,88 @@ class N8nAdapter(BaseA2AAdapter):
         elif "context_id" not in payload:
             payload["context_id"] = context_id
         return payload
+
+    async def _build_multimodal_payload(
+        self,
+        user_input: str,
+        context_id: str | None,
+        context: RequestContext,
+    ) -> Dict[str, Any]:
+        """Build webhook payload with files/images from context.message.parts.
+
+        Args:
+            user_input: The user's text message.
+            context_id: Conversation context ID.
+            context: RequestContext with access to multimodal parts.
+
+        Returns:
+            Payload dict with files/images encoded as base64 or URIs.
+        """
+        # Start with base text payload
+        payload = self._build_payload(user_input, context_id)
+
+        files = []
+        images = []
+
+        # Extract multimodal parts from context
+        for part in context.message.parts:
+            if hasattr(part.root, "file"):  # FilePart
+                file_part = part.root.file
+                try:
+                    file_data = await self._fetch_file_content(file_part)
+                    file_entry: Dict[str, Any] = {
+                        "name": file_part.name or "file",
+                        "mime_type": file_part.mimeType,
+                    }
+
+                    if self.encode_files_base64:
+                        file_entry["data"] = base64.b64encode(file_data).decode("utf-8")
+                    else:
+                        file_entry["data"] = file_data
+
+                    if hasattr(file_part, "uri") and file_part.uri:
+                        file_entry["uri"] = file_part.uri
+
+                    # Categorize as image or file
+                    if file_part.mimeType and file_part.mimeType.startswith("image/"):
+                        images.append(file_entry)
+                    else:
+                        files.append(file_entry)
+
+                except Exception as e:
+                    logger.warning(
+                        "Failed to fetch file %s: %s", file_part.name or "unknown", e
+                    )
+
+        # Add files/images to payload if present
+        if files:
+            payload[self.file_field] = files
+        if images:
+            payload[self.image_field] = images
+
+        return payload
+
+    async def _fetch_file_content(self, file_part) -> bytes:
+        """Fetch file content from URI or return embedded data.
+
+        Args:
+            file_part: FilePart object from A2A message.
+
+        Returns:
+            File content as bytes.
+
+        Raises:
+            ValueError: If file_part has neither uri nor data.
+        """
+        if hasattr(file_part, "uri") and file_part.uri:
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(file_part.uri)
+                resp.raise_for_status()
+                return resp.content
+        elif hasattr(file_part, "data"):
+            return file_part.data
+        else:
+            raise ValueError(f"FilePart has no uri or data: {file_part}")
 
     # ──── Internal: HTTP POST with Retry ────
 
@@ -289,6 +434,74 @@ class N8nAdapter(BaseA2AAdapter):
             if key in item:
                 return str(item[key])
         return json.dumps(item, indent=2)
+
+    def _extract_response(self, output: Any) -> str | list[Part]:
+        """Extract response with multimodal content detection.
+
+        Args:
+            output: Response from n8n webhook.
+
+        Returns:
+            str: If no multimodal content found, returns text.
+            list[Part]: If files/images found, returns multimodal parts.
+        """
+        if not isinstance(output, dict):
+            # Fallback to text extraction for non-dict responses
+            return self._extract_response_text(output)
+
+        parts: list[Part] = []
+
+        # Extract text content
+        text = self._extract_text_from_item(output)
+        if text:
+            parts.append(Part(root=TextPart(text=text)))
+
+        # Extract files (if n8n returns them)
+        if self.file_field in output:
+            for file_ref in output[self.file_field]:
+                if isinstance(file_ref, dict):
+                    parts.append(
+                        Part(
+                            root=FilePart(
+                                file=FileWithUri(
+                                    uri=file_ref.get("url") or file_ref.get("uri"),
+                                    name=file_ref.get("name"),
+                                    mimeType=file_ref.get("mime_type")
+                                    or file_ref.get("mimeType"),
+                                )
+                            )
+                        )
+                    )
+
+        # Extract images (if n8n returns them)
+        if self.image_field in output:
+            for img_ref in output[self.image_field]:
+                if isinstance(img_ref, dict):
+                    parts.append(
+                        Part(
+                            root=FilePart(
+                                file=FileWithUri(
+                                    uri=img_ref.get("url") or img_ref.get("uri"),
+                                    name=img_ref.get("name"),
+                                    mimeType=img_ref.get("mime_type")
+                                    or img_ref.get("mimeType", "image/png"),
+                                )
+                            )
+                        )
+                    )
+
+        # Return multimodal if multiple parts, text-only if single text part
+        if len(parts) > 1:
+            return parts
+        elif len(parts) == 1 and hasattr(parts[0].root, "text"):
+            # Single text part - return as string for consistency
+            return parts[0].root.text
+        elif len(parts) == 1:
+            # Single non-text part
+            return parts
+        else:
+            # No parts extracted
+            return "[Empty response]"
 
 
 # ═══════════════════════════════════════════════════════════════
