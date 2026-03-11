@@ -85,6 +85,18 @@ class AdapterAgentExecutor(AgentExecutor):
             )
             await updater.failed(message=error_msg)
 
+    @staticmethod
+    def _to_parts(chunk: str | Part) -> list[Part]:
+        """Convert a str or Part to a list[Part]."""
+        if isinstance(chunk, str):
+            return [Part(root=TextPart(text=chunk))]
+        elif isinstance(chunk, Part):
+            return [chunk]
+        else:
+            raise TypeError(
+                f"Unexpected type {type(chunk).__name__}. Expected str or Part."
+            )
+
     async def _execute_invoke(
         self,
         updater: TaskUpdater,
@@ -101,11 +113,9 @@ class AdapterAgentExecutor(AgentExecutor):
 
         # Type detection: str (backward compatible) or list[Part] (multimodal)
         if isinstance(result, str):
-            # Backward compatible path: text-only
-            parts = [Part(root=TextPart(text=result))]
+            parts = self._to_parts(result)
             response_text = result
         elif isinstance(result, list):
-            # Multimodal path: list[Part]
             parts = result
             response_text = self._extract_text_from_parts(parts)
         else:
@@ -156,19 +166,8 @@ class AdapterAgentExecutor(AgentExecutor):
             if prev_chunk is not None:
                 chunks.append(prev_chunk)
 
-                # Convert chunk to Parts
-                if isinstance(prev_chunk, str):
-                    parts = [Part(root=TextPart(text=prev_chunk))]
-                elif isinstance(prev_chunk, Part):
-                    parts = [prev_chunk]
-                else:
-                    raise TypeError(
-                        f"Stream yielded unexpected type {type(prev_chunk).__name__}. "
-                        f"Expected str or Part."
-                    )
-
                 await updater.add_artifact(
-                    parts,
+                    self._to_parts(prev_chunk),
                     append=len(chunks) > 1,
                     last_chunk=False,
                 )
@@ -177,19 +176,8 @@ class AdapterAgentExecutor(AgentExecutor):
         if prev_chunk is not None:
             chunks.append(prev_chunk)
 
-            # Convert final chunk to Parts
-            if isinstance(prev_chunk, str):
-                parts = [Part(root=TextPart(text=prev_chunk))]
-            elif isinstance(prev_chunk, Part):
-                parts = [prev_chunk]
-            else:
-                raise TypeError(
-                    f"Stream yielded unexpected type {type(prev_chunk).__name__}. "
-                    f"Expected str or Part."
-                )
-
             await updater.add_artifact(
-                parts,
+                self._to_parts(prev_chunk),
                 append=len(chunks) > 1,
                 last_chunk=True,
             )

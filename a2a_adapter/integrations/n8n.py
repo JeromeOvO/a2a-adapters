@@ -30,6 +30,7 @@ from a2a.server.agent_execution import RequestContext
 from a2a.types import (
     Artifact,
     FilePart,
+    FileWithBytes,
     FileWithUri,
     Message,
     MessageSendParams,
@@ -101,6 +102,8 @@ class N8nAdapter(BaseA2AAdapter):
         file_field: str = "files",
         image_field: str = "images",
         encode_files_base64: bool = True,
+        supported_input_types: list[str] | None = None,
+        supported_output_types: list[str] | None = None,
         name: str = "",
         description: str = "",
         skills: list[dict] | None = None,
@@ -126,6 +129,8 @@ class N8nAdapter(BaseA2AAdapter):
             file_field: JSON field name for file attachments (default: "files").
             image_field: JSON field name for image attachments (default: "images").
             encode_files_base64: Encode files as base64 in JSON (default: True).
+            supported_input_types: MIME types the workflow accepts (default: common types).
+            supported_output_types: MIME types the workflow produces (default: common types).
             name: Optional agent name for AgentCard generation.
             description: Optional agent description for AgentCard generation.
             skills: Optional list of skill dicts for AgentCard generation.
@@ -147,6 +152,8 @@ class N8nAdapter(BaseA2AAdapter):
         self.file_field = file_field
         self.image_field = image_field
         self.encode_files_base64 = encode_files_base64
+        self._supported_input_types = supported_input_types
+        self._supported_output_types = supported_output_types
         self._name = name
         self._description = description
         self._skills = skills or []
@@ -187,6 +194,22 @@ class N8nAdapter(BaseA2AAdapter):
             await self._client.aclose()
             self._client = None
 
+    _DEFAULT_INPUT_TYPES = [
+        "image/jpeg",
+        "image/png",
+        "image/gif",
+        "image/webp",
+        "application/pdf",
+        "application/json",
+        "application/octet-stream",
+    ]
+    _DEFAULT_OUTPUT_TYPES = [
+        "image/jpeg",
+        "image/png",
+        "application/pdf",
+        "application/json",
+    ]
+
     def get_metadata(self) -> AdapterMetadata:
         """Return adapter metadata for AgentCard generation."""
         input_modes = ["text"]
@@ -195,23 +218,10 @@ class N8nAdapter(BaseA2AAdapter):
         # Advertise multimodal capabilities when enabled
         if self.multimodal_mode:
             input_modes.extend(
-                [
-                    "image/jpeg",
-                    "image/png",
-                    "image/gif",
-                    "image/webp",
-                    "application/pdf",
-                    "application/json",
-                    "application/octet-stream",
-                ]
+                self._supported_input_types or self._DEFAULT_INPUT_TYPES
             )
             output_modes.extend(
-                [
-                    "image/jpeg",
-                    "image/png",
-                    "application/pdf",
-                    "application/json",
-                ]
+                self._supported_output_types or self._DEFAULT_OUTPUT_TYPES
             )
 
         return AdapterMetadata(
@@ -302,7 +312,7 @@ class N8nAdapter(BaseA2AAdapter):
                     else:
                         file_entry["data"] = file_data
 
-                    if hasattr(file_part, "uri") and file_part.uri:
+                    if isinstance(file_part, FileWithUri) and file_part.uri:
                         file_entry["uri"] = file_part.uri
 
                     # Categorize as image or file
@@ -324,24 +334,24 @@ class N8nAdapter(BaseA2AAdapter):
 
         return payload
 
-    async def _fetch_file_content(self, file_part) -> bytes:
+    async def _fetch_file_content(self, file_part: FileWithUri | FileWithBytes) -> bytes:
         """Fetch file content from URI or return embedded data.
 
         Args:
-            file_part: FilePart object from A2A message.
+            file_part: FileWithUri or FileWithBytes from A2A message.
 
         Returns:
             File content as bytes.
 
         Raises:
-            ValueError: If file_part has neither uri nor data.
+            ValueError: If file_part is neither FileWithUri nor FileWithBytes.
         """
-        if hasattr(file_part, "uri") and file_part.uri:
-            async with httpx.AsyncClient() as client:
-                resp = await client.get(file_part.uri)
-                resp.raise_for_status()
-                return resp.content
-        elif hasattr(file_part, "data"):
+        if isinstance(file_part, FileWithUri) and file_part.uri:
+            client = await self._get_client()
+            resp = await client.get(file_part.uri)
+            resp.raise_for_status()
+            return resp.content
+        elif isinstance(file_part, FileWithBytes):
             return file_part.data
         else:
             raise ValueError(f"FilePart has no uri or data: {file_part}")
@@ -435,19 +445,21 @@ class N8nAdapter(BaseA2AAdapter):
                 return str(item[key])
         return json.dumps(item, indent=2)
 
-    def _extract_response(self, output: Any) -> str | list[Part]:
+    def _extract_response(self, output: Any) -> list[Part]:
         """Extract response with multimodal content detection.
+
+        Always returns list[Part] for consistent typing when multimodal_mode
+        is enabled. The executor handles both str and list[Part] return types.
 
         Args:
             output: Response from n8n webhook.
 
         Returns:
-            str: If no multimodal content found, returns text.
-            list[Part]: If files/images found, returns multimodal parts.
+            list[Part]: Extracted parts (text, files, images).
         """
         if not isinstance(output, dict):
-            # Fallback to text extraction for non-dict responses
-            return self._extract_response_text(output)
+            text = self._extract_response_text(output)
+            return [Part(root=TextPart(text=text))]
 
         parts: list[Part] = []
 
@@ -490,18 +502,9 @@ class N8nAdapter(BaseA2AAdapter):
                         )
                     )
 
-        # Return multimodal if multiple parts, text-only if single text part
-        if len(parts) > 1:
-            return parts
-        elif len(parts) == 1 and hasattr(parts[0].root, "text"):
-            # Single text part - return as string for consistency
-            return parts[0].root.text
-        elif len(parts) == 1:
-            # Single non-text part
-            return parts
-        else:
-            # No parts extracted
-            return "[Empty response]"
+        if not parts:
+            return [Part(root=TextPart(text="[Empty response]"))]
+        return parts
 
 
 # ═══════════════════════════════════════════════════════════════
