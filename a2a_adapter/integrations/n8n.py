@@ -298,7 +298,7 @@ class N8nAdapter(BaseA2AAdapter):
 
         # Extract multimodal parts from context
         for part in context.message.parts:
-            if hasattr(part.root, "file"):  # FilePart
+            if isinstance(part.root, FilePart):
                 file_part = part.root.file
                 try:
                     file_data = await self._fetch_file_content(file_part)
@@ -435,15 +435,22 @@ class N8nAdapter(BaseA2AAdapter):
             return self._extract_text_from_item(output)
         return str(output)
 
-    @staticmethod
-    def _extract_text_from_item(item: Any) -> str:
-        """Extract text from a single n8n output item."""
+    def _extract_text_from_item(self, item: Any) -> str:
+        """Extract text from a single n8n output item.
+
+        Excludes file_field/image_field keys from the JSON fallback to avoid
+        serializing file metadata as text content.
+        """
         if not isinstance(item, dict):
             return str(item)
         for key in ("output", "result", "message", "text", "response", "content"):
             if key in item:
                 return str(item[key])
-        return json.dumps(item, indent=2)
+        filtered = {
+            k: v for k, v in item.items()
+            if k not in (self.file_field, self.image_field)
+        }
+        return json.dumps(filtered, indent=2) if filtered else ""
 
     def _extract_response(self, output: Any) -> list[Part]:
         """Extract response with multimodal content detection.
