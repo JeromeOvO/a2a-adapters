@@ -2,7 +2,7 @@
 
 Requirements:
     - Ollama running locally: `ollama serve`
-    - Model pulled: `ollama pull llama3.2:8b`
+    - Model pulled: `ollama pull llama3.2`
 
 Usage:
     python ollama_agent.py
@@ -12,7 +12,7 @@ Usage:
 from a2a_adapter import OllamaAdapter, serve_agent
 from a2a_adapter.integrations.ollama import OllamaClient
 
-client = OllamaClient(model="llama3.2:8b")
+client = OllamaClient(model="llama3.2")
 adapter = OllamaAdapter(
     client=client,
     name="My Ollama Agent",

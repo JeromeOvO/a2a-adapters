@@ -33,7 +33,7 @@ class OllamaClient:
 
     Example::
 
-        client = OllamaClient(model="llama3.2:8b")
+        client = OllamaClient(model="llama3.2")
         text = await client.chat("Why is the sky blue?")
 
     Example with streaming::
@@ -44,7 +44,7 @@ class OllamaClient:
 
     def __init__(
         self,
-        model: str = "llama3.2:8b",
+        model: str = "llama3.2",
         base_url: str = "http://localhost:11434",
         system_prompt: str | None = None,
         temperature: float | None = None,
@@ -182,14 +182,14 @@ class OllamaAdapter(BaseA2AAdapter):
         from a2a_adapter import OllamaAdapter, serve_agent
         from a2a_adapter.integrations.ollama import OllamaClient
 
-        client = OllamaClient(model="llama3.2:8b")
+        client = OllamaClient(model="llama3.2")
         adapter = OllamaAdapter(client=client, name="My Local LLM")
         serve_agent(adapter, port=10010)
 
     Convenience shorthand (creates OllamaClient internally)::
 
         adapter = OllamaAdapter(
-            model="llama3.2:8b",
+            model="llama3.2",
             name="My Local LLM",
         )
     """
@@ -199,7 +199,7 @@ class OllamaAdapter(BaseA2AAdapter):
         client: OllamaClient | None = None,
         *,
         # Convenience params — used to create OllamaClient if client is None
-        model: str = "llama3.2:8b",
+        model: str = "llama3.2",
         base_url: str = "http://localhost:11434",
         system_prompt: str | None = None,
         temperature: float | None = None,
