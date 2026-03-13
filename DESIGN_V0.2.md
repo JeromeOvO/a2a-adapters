@@ -1063,7 +1063,7 @@ class OllamaClient:
 class OllamaAdapter(BaseA2AAdapter):
     """Wraps OllamaClient, following the same pattern as LangChainAdapter(runnable=...) """
 
-    def __init__(self, client=None, *, model="llama3.2:8b", ...):
+    def __init__(self, client=None, *, model="llama3.2", ...):
         self.client = client or OllamaClient(model=model, ...)
 
     async def invoke(self, user_input, context_id=None) -> str:
@@ -1080,7 +1080,7 @@ class OllamaAdapter(BaseA2AAdapter):
 from a2a_adapter import OllamaAdapter, serve_agent
 from a2a_adapter.integrations.ollama import OllamaClient
 
-client = OllamaClient(model="llama3.2:8b")
+client = OllamaClient(model="llama3.2")
 adapter = OllamaAdapter(client=client, name="Local LLM")
 serve_agent(adapter, port=10010)
 ```

@@ -17,7 +17,7 @@ from a2a_adapter.integrations.ollama import OllamaAdapter, OllamaClient
 @pytest.fixture
 def client():
     return OllamaClient(
-        model="llama3.2:8b",
+        model="llama3.2",
         system_prompt="You are helpful.",
         temperature=0.5,
     )
@@ -250,7 +250,7 @@ class TestAdapterMetadata:
         assert adapter.supports_streaming() is True
 
     def test_model_not_leaked_in_metadata(self):
-        a = OllamaAdapter(model="llama3.2:8b")
+        a = OllamaAdapter(model="llama3.2")
         meta = a.get_metadata()
         assert "llama3.2" not in meta.name
         assert "llama3.2" not in meta.description

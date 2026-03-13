@@ -108,7 +108,7 @@ serve_agent(adapter, port=9000)
 from a2a_adapter import OllamaAdapter, serve_agent
 from a2a_adapter.integrations.ollama import OllamaClient
 
-client = OllamaClient(model="llama3.2:8b")
+client = OllamaClient(model="llama3.2")
 adapter = OllamaAdapter(client=client, name="Local LLM Agent")
 serve_agent(adapter, port=9000)
 ```

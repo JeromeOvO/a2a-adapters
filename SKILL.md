@@ -155,7 +155,7 @@ from a2a_adapter import OllamaAdapter, serve_agent
 from a2a_adapter.integrations.ollama import OllamaClient
 
 client = OllamaClient(
-    model="llama3.2:8b",          # Required: Ollama model name
+    model="llama3.2",          # Required: Ollama model name
     base_url="http://localhost:11434",  # Ollama server URL
     system_prompt=None,           # Optional system prompt
     temperature=None,             # Sampling temperature
@@ -173,7 +173,7 @@ serve_agent(adapter, port=10010)  # Streaming always supported
 Convenience shorthand (creates `OllamaClient` internally):
 
 ```python
-adapter = OllamaAdapter(model="llama3.2:8b", name="Local LLM")
+adapter = OllamaAdapter(model="llama3.2", name="Local LLM")
 serve_agent(adapter, port=10010)
 ```
 
@@ -497,7 +497,7 @@ async with MyAdapter() as adapter:
 | LangGraph workflow | `LangGraphAdapter(graph=graph)` |
 | CrewAI crew | `CrewAIAdapter(crew=crew)` |
 | OpenClaw agent | `OpenClawAdapter(...)` |
-| Local Ollama model | `OllamaAdapter(model="llama3.2:8b")` |
+| Local Ollama model | `OllamaAdapter(model="llama3.2")` |
 | Any other framework | Subclass `BaseA2AAdapter`, implement `invoke()` |
 | Need streaming | Implement `stream()` or use LangChain/LangGraph/Ollama (auto) |
 | Need multimodal output | Return `list[Part]` from `invoke()` |
