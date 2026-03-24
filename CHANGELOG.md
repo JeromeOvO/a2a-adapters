@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.2.6] - 2026-03-23
+
+### Fixed
+
+- Handle OpenClaw outputting JSON to stderr instead of stdout - now checks both streams
+- Fix tests for cancel/close that were missing async mock for `proc.wait()`
+- Improve error message when OpenClaw command returns empty output to include stderr for debugging
+
 ## [0.2.5] - 2026-03-23
 
 ### Fixed
