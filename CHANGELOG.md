@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.2.7] - 2026-03-26
+
+### Fixed
+
+- Downgrade "Executing OpenClaw command" log from `INFO` to `DEBUG` to reduce noise when running agents via `hybro-hub agent start`
+- Fix `OllamaClient._get_client()` mock stomping: guard `is_closed` check with `isinstance(httpx.AsyncClient)` so injected test mocks are not overwritten by a real client, fixing 5 unit tests that were hitting a live Ollama instance
+
 ## [0.2.6] - 2026-03-23
 
 ### Fixed
