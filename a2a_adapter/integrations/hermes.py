@@ -241,6 +241,8 @@ class HermesAdapter(BaseA2AAdapter):
                 chunk = await queue.get()
                 if chunk is _SENTINEL:
                     break
+                if not chunk:
+                    continue
                 yield chunk
 
             await task

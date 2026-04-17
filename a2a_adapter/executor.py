@@ -87,6 +87,22 @@ class AdapterAgentExecutor(AgentExecutor):
             await updater.failed(message=error_msg)
 
     @staticmethod
+    def _is_empty_chunk(chunk: str | Part) -> bool:
+        """Check if a chunk carries no meaningful content.
+
+        Empty text chunks produce protobuf Parts where ``text=""`` is the
+        default value, so ``MessageToDict`` omits the field entirely.  The
+        resulting JSON ``{"kind": "text"}`` (no ``text`` key) fails Pydantic
+        validation on the receiving end.  Filter these out before they reach
+        the wire.
+        """
+        if isinstance(chunk, str):
+            return chunk == ""
+        if isinstance(chunk, Part) and hasattr(chunk.root, "text"):
+            return chunk.root.text == ""
+        return False
+
+    @staticmethod
     def _to_parts(chunk: str | Part) -> list[Part]:
         """Convert a str or Part to a list[Part]."""
         if isinstance(chunk, str):
@@ -157,6 +173,8 @@ class AdapterAgentExecutor(AgentExecutor):
         """Streaming execution: stream() -> incremental artifacts -> complete.
 
         Handles both text chunks (str) and multimodal chunks (Part).
+        Empty text chunks are silently dropped to avoid producing malformed
+        wire-format Parts (protobuf omits default-value fields).
         """
         chunks: list[str | Part] = []
         prev_chunk: str | Part | None = None
@@ -165,6 +183,9 @@ class AdapterAgentExecutor(AgentExecutor):
         async for chunk in self._adapter.stream(
             user_input, context.context_id, context=context
         ):
+            if self._is_empty_chunk(chunk):
+                continue
+
             if prev_chunk is not None:
                 chunks.append(prev_chunk)
 
