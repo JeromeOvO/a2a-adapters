@@ -170,7 +170,8 @@ All adapters and utilities are exported from the package root via lazy imports. 
 │  │  close()                │  ← optional (resource cleanup)      │
 │  │  get_metadata()         │  ← optional (AgentCard generation)  │
 │  └────────────┬────────────┘                                     │
-├───────────────┼──────────────────────────────────────────────────┤
+│               │                                                  │
+├──────────────────────────────────────────────────────────────────┤
 │  Layer 1: Framework Drivers (we write, ~50-150 lines each)       │
 │               │                                                  │
 │  ┌────────────▼──────┐ ┌──────────┐ ┌───────────┐ ┌───────────┐│
@@ -183,11 +184,14 @@ All adapters and utilities are exported from the package root via lazy imports. 
 │  ┌──────────────────┐ ┌──────────┐ │  astream  │ │  astream  ││
 │  │ OpenClawAdapter   │ │Callable  │ └───────────┘ └───────────┘│
 │  │  invoke():        │ │Adapter   │                             │
-│  │   spawn CLI       │ │ invoke():│                             │
-│  │   parse JSON      │ │  call fn │                             │
-│  │  cancel():        │ └──────────┘                             │
-│  │   kill process    │                                          │
-│  └──────────────────┘                                           │
+│  │   spawn CLI       │ │ invoke():│ ┌───────────────────────┐  │
+│  │   parse JSON      │ │  call fn │ │HermesAdapter          │  │
+│  │  cancel():        │ └──────────┘ │ (gateway pattern)     │  │
+│  │   kill process    │              │  invoke():            │  │
+│  └──────────────────┘              │   SessionDB + AIAgent │  │
+│                                     │  cancel():            │  │
+│                                     │   agent.interrupt()   │  │
+│                                     └───────────────────────┘  │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -613,6 +617,7 @@ _BUILTIN_MAP = {
     "callable":  ("a2a_adapter.integrations.callable",  "CallableAdapter"),
     "openclaw":  ("a2a_adapter.integrations.openclaw",  "OpenClawAdapter"),
     "ollama":    ("a2a_adapter.integrations.ollama",    "OllamaAdapter"),
+    "hermes":    ("a2a_adapter.integrations.hermes",    "HermesAdapter"),
 }
 
 
@@ -705,6 +710,7 @@ _ADAPTER_LAZY_MAP = {
     "OpenClawAdapter":  (".integrations.openclaw",  "OpenClawAdapter"),
     "OllamaAdapter":    (".integrations.ollama",    "OllamaAdapter"),
     "OllamaClient":     (".integrations.ollama",    "OllamaClient"),
+    "HermesAdapter":    (".integrations.hermes",    "HermesAdapter"),
 }
 
 
@@ -740,6 +746,7 @@ __all__ = [
     "OpenClawAdapter",
     "OllamaAdapter",
     "OllamaClient",
+    "HermesAdapter",
 ]
 ```
 
@@ -1085,6 +1092,53 @@ adapter = OllamaAdapter(client=client, name="Local LLM")
 serve_agent(adapter, port=10010)
 ```
 
+### 6.9 HermesAdapter (Gateway Pattern)
+
+**Framework:** Hermes Agent (`AIAgent`) — multi-purpose assistant with tool use, persistent memory, and subagent delegation
+**Unique aspects:** Stateful (conversation history persists across turns via `SessionDB`), synchronous blocking API, callback-based streaming, `interrupt()` for cancellation. Uses the "gateway pattern" — mirrors Hermes's own production gateway by loading/saving history from `SessionDB` and creating a fresh `AIAgent` per turn.
+**Streaming:** Yes (via `stream_callback` parameter)
+
+```python
+class HermesAdapter(BaseA2AAdapter):
+    """~100 lines — gateway pattern integration"""
+
+    def __init__(self, model=None, provider=None, enabled_toolsets=None,
+                 max_workers=4, name="", description="", ...):
+        # Store Hermes-specific config
+        # Lazily initialize SessionDB and ThreadPoolExecutor
+
+    async def invoke(self, user_input, context_id=None) -> str:
+        session_id = context_id or f"a2a-{uuid.uuid4().hex[:12]}"
+        history = self._session_db.get_messages_as_conversation(session_id) or []
+        agent = self._make_agent(session_id)
+        result = await loop.run_in_executor(
+            self._executor,
+            lambda: agent.run_conversation(
+                user_message=user_input,
+                conversation_history=history,
+                task_id=session_id,
+            ),
+        )
+        return result.get("final_response", "")
+
+    async def cancel(self):
+        if self._current_agent:
+            self._current_agent.interrupt()
+```
+
+**Usage:**
+
+```python
+from a2a_adapter import HermesAdapter, serve_agent
+
+adapter = HermesAdapter(
+    model="anthropic/claude-sonnet-4-20250514",
+    provider="openrouter",
+    enabled_toolsets=["hermes-a2a"],
+)
+serve_agent(adapter, port=9010)
+```
+
 ---
 
 ## 7. SDK Delegation Table
@@ -1143,7 +1197,8 @@ a2a_adapter/
     ├── langgraph.py         # LangGraphAdapter (~70 lines)
     ├── callable.py          # CallableAdapter (~30 lines)
     ├── ollama.py            # OllamaClient + OllamaAdapter (~120 lines)
-    └── openclaw.py          # OpenClawAdapter (~150 lines)
+    ├── openclaw.py          # OpenClawAdapter (~150 lines)
+    └── hermes.py            # HermesAdapter (~100 lines, gateway pattern)
 ```
 
 **Code volume comparison:**
@@ -1151,8 +1206,8 @@ a2a_adapter/
 | Component | v0.1 (current) | v0.2 (proposed) | Change |
 |---|---|---|---|
 | Core (`__init__` + `adapter` + `executor` + `server` + `loader`) | 896 lines | ~330 lines | -63% |
-| Integrations (all 6 adapters) | 4,270 lines | ~440 lines | -90% |
-| **Total** | **~5,166 lines** | **~770 lines** | **-85%** |
+| Integrations (all 8 adapters) | 4,270 lines | ~540 lines | -87% |
+| **Total** | **~5,166 lines** | **~870 lines** | **-83%** |
 
 ---
 
@@ -1231,6 +1286,6 @@ For each adapter:
 
 ---
 
-*Document version: v0.2-draft-1*
-*Last updated: 2026-02-09*
+*Document version: v0.2-draft-2*
+*Last updated: 2026-04-16*
 *Authors: HYBRO AI*
