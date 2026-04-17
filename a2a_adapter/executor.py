@@ -175,27 +175,41 @@ class AdapterAgentExecutor(AgentExecutor):
         Handles both text chunks (str) and multimodal chunks (Part).
         Empty text chunks are silently dropped to avoid producing malformed
         wire-format Parts (protobuf omits default-value fields).
+
+        If the stream raises mid-flight, the open artifact is closed with
+        ``last_chunk=True`` before the exception propagates so downstream
+        consumers never see an unclosed artifact.
         """
         chunks: list[str | Part] = []
         prev_chunk: str | Part | None = None
         artifact_id = uuid.uuid4().hex
 
-        async for chunk in self._adapter.stream(
-            user_input, context.context_id, context=context
-        ):
-            if self._is_empty_chunk(chunk):
-                continue
+        try:
+            async for chunk in self._adapter.stream(
+                user_input, context.context_id, context=context
+            ):
+                if self._is_empty_chunk(chunk):
+                    continue
 
-            if prev_chunk is not None:
-                chunks.append(prev_chunk)
+                if prev_chunk is not None:
+                    chunks.append(prev_chunk)
 
+                    await updater.add_artifact(
+                        self._to_parts(prev_chunk),
+                        artifact_id=artifact_id,
+                        append=len(chunks) > 1,
+                        last_chunk=False,
+                    )
+                prev_chunk = chunk
+        except Exception:
+            if chunks:
                 await updater.add_artifact(
-                    self._to_parts(prev_chunk),
+                    self._to_parts(chunks[-1]),
                     artifact_id=artifact_id,
-                    append=len(chunks) > 1,
-                    last_chunk=False,
+                    append=True,
+                    last_chunk=True,
                 )
-            prev_chunk = chunk
+            raise
 
         if prev_chunk is not None:
             chunks.append(prev_chunk)

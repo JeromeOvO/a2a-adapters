@@ -54,6 +54,26 @@ class FailingAdapter(BaseA2AAdapter):
         raise RuntimeError("boom")
 
 
+class FailingStreamAdapter(BaseA2AAdapter):
+    """Adapter that yields some chunks then raises mid-stream."""
+
+    def __init__(self, ok_chunks: list[str], error: Exception | None = None):
+        self._ok_chunks = ok_chunks
+        self._error = error or RuntimeError("stream exploded")
+
+    async def invoke(
+        self, user_input: str, context_id: str | None = None, **kwargs
+    ) -> str:
+        raise RuntimeError("invoke not supported")
+
+    async def stream(
+        self, user_input: str, context_id: str | None = None, **kwargs
+    ) -> AsyncIterator[str]:
+        for chunk in self._ok_chunks:
+            yield chunk
+        raise self._error
+
+
 @pytest.fixture
 def stub_adapter():
     return StubAdapter()

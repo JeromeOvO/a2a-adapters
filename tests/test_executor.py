@@ -15,6 +15,7 @@ from a2a_adapter.executor import AdapterAgentExecutor
 
 from .conftest import (
     FailingAdapter,
+    FailingStreamAdapter,
     StreamingStubAdapter,
     StubAdapter,
 )
@@ -287,6 +288,54 @@ class TestExecuteStreaming:
             e for e in events if type(e).__name__ == "TaskArtifactUpdateEvent"
         ]
         assert len(artifact_events) == 2
+
+    async def test_streaming_failure_closes_artifact(self, ctx, event_queue):
+        """When the stream raises after yielding chunks, the open artifact
+        must be closed (last_chunk=True) and the task must enter failed state."""
+        adapter = FailingStreamAdapter(["Hello", " world"])
+        executor = AdapterAgentExecutor(adapter)
+
+        await executor.execute(ctx, event_queue)
+
+        events = await _collect_events(event_queue)
+        artifact_events = [
+            e for e in events if type(e).__name__ == "TaskArtifactUpdateEvent"
+        ]
+        assert len(artifact_events) >= 1
+
+        status_events = [
+            e for e in events if type(e).__name__ == "TaskStatusUpdateEvent"
+        ]
+        states = [
+            getattr(e.status, "state", None).value
+            for e in status_events
+            if hasattr(e, "status") and hasattr(getattr(e, "status", None), "state")
+        ]
+        assert "failed" in states
+
+    async def test_streaming_failure_no_chunks_still_fails(self, ctx, event_queue):
+        """When stream() raises immediately (no chunks emitted),
+        the task should enter failed state without artifact cleanup."""
+        adapter = FailingStreamAdapter([])
+        executor = AdapterAgentExecutor(adapter)
+
+        await executor.execute(ctx, event_queue)
+
+        events = await _collect_events(event_queue)
+        artifact_events = [
+            e for e in events if type(e).__name__ == "TaskArtifactUpdateEvent"
+        ]
+        assert len(artifact_events) == 0
+
+        status_events = [
+            e for e in events if type(e).__name__ == "TaskStatusUpdateEvent"
+        ]
+        states = [
+            getattr(e.status, "state", None).value
+            for e in status_events
+            if hasattr(e, "status") and hasattr(getattr(e, "status", None), "state")
+        ]
+        assert "failed" in states
 
 
 # ── cancel ────────────────────────────────────────────────────

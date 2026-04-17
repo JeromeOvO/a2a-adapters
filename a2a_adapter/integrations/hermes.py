@@ -80,8 +80,26 @@ class HermesAdapter(BaseA2AAdapter):
         )
         self._session_db = None  # lazy — see _ensure_session_db()
         self._running_agents: dict[str, object] = {}  # task_id → AIAgent
+        self._session_locks: dict[str, asyncio.Lock] = {}  # context_id → lock
 
     # ──── Internal helpers ────
+
+    def _session_lock(self, session_id: str) -> asyncio.Lock:
+        """Get or create a per-session lock.
+
+        Serializes concurrent requests within the same conversation so
+        they don't race on SessionDB snapshots or Hermes task-scoped
+        resources (VMs, background processes).  Requests across different
+        conversations run fully in parallel.
+
+        Called only from the asyncio event loop thread, so the
+        get-or-create sequence is safe without its own lock.
+        """
+        lock = self._session_locks.get(session_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._session_locks[session_id] = lock
+        return lock
 
     def _ensure_session_db(self):
         """Lazily initialize the shared SessionDB instance.
@@ -158,6 +176,44 @@ class HermesAdapter(BaseA2AAdapter):
             return context.task_id
         return uuid.uuid4().hex
 
+    # ──── Internal: result inspection ────
+
+    @staticmethod
+    def _check_hermes_result(result: dict, session_id: str) -> str:
+        """Inspect a run_conversation() result dict and return the response.
+
+        Hermes returns structured error metadata on many non-exception exit
+        paths (truncation, iteration exhaustion, compression failure, etc.).
+        If a usable ``final_response`` exists we return it — the user got
+        useful output even if the run was not fully successful.  When no
+        response is available **and** the result signals failure, we raise
+        so the executor can emit A2A ``failed`` state.
+
+        Raises:
+            RuntimeError: When the run failed and produced no usable output.
+        """
+        final = result.get("final_response") or ""
+        error = result.get("error")
+        failed = result.get("failed", False)
+        completed = result.get("completed", True)
+
+        if error:
+            logger.warning(
+                "Hermes run_conversation error for session %s: %s",
+                session_id,
+                error,
+            )
+
+        if final:
+            return final
+
+        if failed or not completed:
+            raise RuntimeError(
+                error or "Hermes run did not complete successfully"
+            )
+
+        return final
+
     # ──── Required: invoke ────
 
     async def invoke(
@@ -169,34 +225,29 @@ class HermesAdapter(BaseA2AAdapter):
         in a thread, and lets the agent persist updates internally.
         """
         session_id = context_id or f"a2a-{uuid.uuid4().hex[:12]}"
-        db = self._ensure_session_db()
-        history = db.get_messages_as_conversation(session_id) or []
 
-        agent = self._make_agent(session_id)
-        task_id = self._extract_task_id(kwargs)
-        self._running_agents[task_id] = agent
+        async with self._session_lock(session_id):
+            db = self._ensure_session_db()
+            history = db.get_messages_as_conversation(session_id) or []
 
-        loop = asyncio.get_running_loop()
-        try:
-            result = await loop.run_in_executor(
-                self._executor,
-                lambda: agent.run_conversation(
-                    user_message=user_input,
-                    conversation_history=history,
-                    task_id=session_id,
-                ),
-            )
-        finally:
-            self._running_agents.pop(task_id, None)
+            agent = self._make_agent(session_id)
+            task_id = self._extract_task_id(kwargs)
+            self._running_agents[task_id] = agent
 
-        if result.get("error"):
-            logger.warning(
-                "Hermes run_conversation returned error for session %s: %s",
-                session_id,
-                result["error"],
-            )
+            loop = asyncio.get_running_loop()
+            try:
+                result = await loop.run_in_executor(
+                    self._executor,
+                    lambda: agent.run_conversation(
+                        user_message=user_input,
+                        conversation_history=history,
+                        task_id=session_id,
+                    ),
+                )
+            finally:
+                self._running_agents.pop(task_id, None)
 
-        return result.get("final_response", "")
+            return self._check_hermes_result(result, session_id)
 
     # ──── Optional: streaming ────
 
@@ -210,44 +261,48 @@ class HermesAdapter(BaseA2AAdapter):
         async iterator for the bridge layer.
         """
         session_id = context_id or f"a2a-{uuid.uuid4().hex[:12]}"
-        db = self._ensure_session_db()
-        history = db.get_messages_as_conversation(session_id) or []
 
-        agent = self._make_agent(session_id)
-        task_id = self._extract_task_id(kwargs)
-        self._running_agents[task_id] = agent
+        async with self._session_lock(session_id):
+            db = self._ensure_session_db()
+            history = db.get_messages_as_conversation(session_id) or []
 
-        loop = asyncio.get_running_loop()
-        queue: asyncio.Queue[str | None] = asyncio.Queue()
+            agent = self._make_agent(session_id)
+            task_id = self._extract_task_id(kwargs)
+            self._running_agents[task_id] = agent
 
-        def emit(chunk: str):
-            loop.call_soon_threadsafe(queue.put_nowait, chunk)
+            loop = asyncio.get_running_loop()
+            queue: asyncio.Queue[str | None] = asyncio.Queue()
 
-        def _run():
+            def emit(chunk: str):
+                loop.call_soon_threadsafe(queue.put_nowait, chunk)
+
+            def _run():
+                try:
+                    return agent.run_conversation(
+                        user_message=user_input,
+                        conversation_history=history,
+                        task_id=session_id,
+                        stream_callback=emit,
+                    )
+                finally:
+                    loop.call_soon_threadsafe(queue.put_nowait, _SENTINEL)
+
+            task = loop.run_in_executor(self._executor, _run)
+
             try:
-                return agent.run_conversation(
-                    user_message=user_input,
-                    conversation_history=history,
-                    task_id=session_id,
-                    stream_callback=emit,
-                )
+                while True:
+                    chunk = await queue.get()
+                    if chunk is _SENTINEL:
+                        break
+                    if not chunk:
+                        continue
+                    yield chunk
+
+                result = await task
+                if result:
+                    self._check_hermes_result(result, session_id)
             finally:
-                loop.call_soon_threadsafe(queue.put_nowait, _SENTINEL)
-
-        task = loop.run_in_executor(self._executor, _run)
-
-        try:
-            while True:
-                chunk = await queue.get()
-                if chunk is _SENTINEL:
-                    break
-                if not chunk:
-                    continue
-                yield chunk
-
-            await task
-        finally:
-            self._running_agents.pop(task_id, None)
+                self._running_agents.pop(task_id, None)
 
     # ──── Optional: cancel ────
 
@@ -281,5 +336,6 @@ class HermesAdapter(BaseA2AAdapter):
     # ──── Optional: cleanup ────
 
     async def close(self) -> None:
-        """Shut down the thread pool executor."""
+        """Shut down the thread pool executor and release internal state."""
         self._executor.shutdown(wait=False, cancel_futures=True)
+        self._session_locks.clear()
