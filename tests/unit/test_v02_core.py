@@ -432,10 +432,12 @@ def test_import_all_adapters():
         LangGraphAdapter,
         CrewAIAdapter,
         OpenClawAdapter,
+        OllamaAdapter,
+        HermesAdapter,
     )
-    # All should be importable
     adapters = [N8nAdapter, CallableAdapter, LangChainAdapter,
-                LangGraphAdapter, CrewAIAdapter, OpenClawAdapter]
+                LangGraphAdapter, CrewAIAdapter, OpenClawAdapter,
+                OllamaAdapter, HermesAdapter]
     assert all(a is not None for a in adapters)
 
 

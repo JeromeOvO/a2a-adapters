@@ -28,7 +28,7 @@ from ..base_adapter import AdapterMetadata, BaseA2AAdapter
 
 logger = logging.getLogger(__name__)
 
-_SENTINEL = None
+_SENTINEL = object()
 
 
 class HermesAdapter(BaseA2AAdapter):
