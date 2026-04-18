@@ -8,6 +8,7 @@ This package contains concrete adapter implementations for various agent framewo
 - LangGraph: Stateful workflow orchestration framework
 - Callable: Generic Python async function adapter
 - OpenClaw: Personal AI super agent CLI wrapper
+- Hermes: Multi-purpose AI agent with tool use and persistent memory
 
 Each module exports both:
 - v0.2 adapter class (e.g., N8nAdapter) — new simplified interface
@@ -24,6 +25,7 @@ __all__ = [
     "OpenClawAdapter",
     "OllamaAdapter",
     "OllamaClient",
+    "HermesAdapter",
     # v0.1 (deprecated)
     "N8nAgentAdapter",
     "CrewAIAgentAdapter",
@@ -61,6 +63,9 @@ def __getattr__(name: str):
     elif name == "OllamaClient":
         from .ollama import OllamaClient
         return OllamaClient
+    elif name == "HermesAdapter":
+        from .hermes import HermesAdapter
+        return HermesAdapter
     # v0.1 adapters (deprecated)
     elif name == "N8nAgentAdapter":
         from .n8n import N8nAgentAdapter
