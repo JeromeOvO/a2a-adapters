@@ -40,6 +40,8 @@ _BUILTIN_MAP: Dict[str, tuple[str, str]] = {
     "callable": ("a2a_adapter.integrations.callable", "CallableAdapter"),
     "openclaw": ("a2a_adapter.integrations.openclaw", "OpenClawAdapter"),
     "ollama": ("a2a_adapter.integrations.ollama", "OllamaAdapter"),
+    "claude-code": ("a2a_adapter.integrations.claude_code", "ClaudeCodeAdapter"),
+    "codex": ("a2a_adapter.integrations.codex", "CodexAdapter"),
     "hermes": ("a2a_adapter.integrations.hermes", "HermesAdapter"),
 }
 

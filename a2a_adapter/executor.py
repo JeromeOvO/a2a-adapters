@@ -23,6 +23,7 @@ from a2a.types import Part, TextPart
 from a2a.utils.message import new_agent_text_message
 
 from .base_adapter import BaseA2AAdapter
+from .exceptions import CancelledByAdapterError
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +73,10 @@ class AdapterAgentExecutor(AgentExecutor):
             else:
                 await self._execute_invoke(updater, user_input, context)
 
+        except CancelledByAdapterError:
+            # cancel() already emitted terminal canceled state.
+            # Do NOT emit failed — just exit silently.
+            logger.info("Task %s canceled by adapter", context.task_id)
         except Exception as e:
             logger.error(
                 "Adapter execution failed for task %s: %s",

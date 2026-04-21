@@ -16,6 +16,7 @@ __version__ = "0.2.0"
 
 # ──── v0.2 Core Exports (eager, no optional deps) ────
 from .base_adapter import AdapterMetadata, BaseA2AAdapter
+from .exceptions import CancelledByAdapterError
 from .server import build_agent_card, serve_agent, to_a2a
 
 # ──── v0.2 Loader Exports ────
@@ -42,6 +43,8 @@ _ADAPTER_LAZY_MAP = {
     "OpenClawAdapter": (".integrations.openclaw", "OpenClawAdapter"),
     "OllamaAdapter": (".integrations.ollama", "OllamaAdapter"),
     "OllamaClient": (".integrations.ollama", "OllamaClient"),
+    "ClaudeCodeAdapter": (".integrations.claude_code", "ClaudeCodeAdapter"),
+    "CodexAdapter": (".integrations.codex", "CodexAdapter"),
     "HermesAdapter": (".integrations.hermes", "HermesAdapter"),
 }
 
@@ -69,6 +72,7 @@ __all__ = [
     # v0.2 Core
     "BaseA2AAdapter",
     "AdapterMetadata",
+    "CancelledByAdapterError",
     # v0.2 Server
     "serve_agent",
     "to_a2a",
@@ -89,5 +93,7 @@ __all__ = [
     "OpenClawAdapter",
     "OllamaAdapter",
     "OllamaClient",
+    "ClaudeCodeAdapter",
+    "CodexAdapter",
     "HermesAdapter",
 ]
