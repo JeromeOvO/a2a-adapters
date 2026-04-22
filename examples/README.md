@@ -14,8 +14,15 @@ pip install a2a-adapter[langgraph]     # + LangGraph
 ```
 
 ```bash
-# For LangChain/LangGraph/CrewAI examples
+# For LangChain/LangGraph/CrewAI/Codex examples
 export OPENAI_API_KEY="your-key"
+
+# For Claude Code examples
+# npm install -g @anthropic-ai/claude-code
+export ANTHROPIC_API_KEY="your-key"
+
+# For Codex examples
+# npm install -g @openai/codex
 ```
 
 ## Examples
@@ -29,6 +36,8 @@ export OPENAI_API_KEY="your-key"
 | `openclaw_agent.py` | OpenClaw | - | 9008 | OpenClaw agent -> A2A server |
 | `ollama_agent.py` | Ollama | Yes | 10010 | Local Ollama LLM -> A2A server (streaming) |
 | `hermes_agent.py` | Hermes | Yes | 9010 | Hermes AI agent -> A2A server (streaming, multi-turn) |
+| `claude_code_agent.py` | Claude Code | Yes | 9010 | Claude Code CLI -> A2A server (streaming, multi-turn) |
+| `codex_agent.py` | Codex | - | 9011 | Codex CLI -> A2A server (multi-turn) |
 | `custom_adapter.py` | Custom | - | 8003 | Custom BaseA2AAdapter (sentiment analyzer) |
 | `single_agent_client.py` | httpx | - | - | **Client**: test any A2A agent |
 | `v02_quickstart.py` | Mixed | - | 9000 | Quick start: callable, n8n, custom |
@@ -54,6 +63,8 @@ python examples/crewai_agent.py         # CrewAI
 python examples/openclaw_agent.py       # OpenClaw
 python examples/ollama_agent.py        # Ollama (local LLM, streaming)
 python examples/hermes_agent.py        # Hermes (tool use, multi-turn, streaming)
+python examples/claude_code_agent.py   # Claude Code (streaming, multi-turn)
+python examples/codex_agent.py         # Codex (multi-turn)
 python examples/custom_adapter.py       # Custom adapter (sentiment analyzer)
 ```
 

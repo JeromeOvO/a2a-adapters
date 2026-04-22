@@ -6,7 +6,7 @@
 
 **Convert any AI agent into an A2A Protocol server in 3 lines.**
 
-A Python SDK that makes any agent framework (n8n, LangGraph, CrewAI, LangChain, [OpenClaw](https://openclaw.ai/), Ollama, or a plain function) compatible with the [A2A (Agent-to-Agent) Protocol](https://github.com/a2aproject/A2A).
+A Python SDK that makes any agent framework (n8n, LangGraph, CrewAI, LangChain, [OpenClaw](https://openclaw.ai/), Claude Code, Codex, Ollama, or a plain function) compatible with the [A2A (Agent-to-Agent) Protocol](https://github.com/a2aproject/A2A).
 
 ```python
 from a2a_adapter import N8nAdapter, serve_agent
@@ -20,7 +20,7 @@ That's it. Your agent is now A2A-compatible with auto-generated AgentCard, task 
 ## Features
 
 - **3-line setup** — `import`, `create`, `serve`
-- **7 built-in adapters** — n8n, LangChain, LangGraph, CrewAI, OpenClaw, Ollama, Callable
+- **Built-in adapters** — including n8n, LangChain, LangGraph, CrewAI, OpenClaw, Claude Code, Codex, Ollama, and more
 - **Streaming** — auto-detected for LangChain and LangGraph
 - **Auto AgentCard** — generated from adapter metadata, served at `/.well-known/agent.json`
 - **SDK-First** — delegates task management, SSE, push notifications to the A2A SDK
@@ -98,6 +98,44 @@ client = OllamaClient(model="llama3.2")
 adapter = OllamaAdapter(client=client, name="My Local LLM")
 serve_agent(adapter, port=10010)
 ```
+
+### Claude Code
+
+```python
+from a2a_adapter import ClaudeCodeAdapter, serve_agent
+
+adapter = ClaudeCodeAdapter(working_dir="/path/to/project")
+serve_agent(adapter, port=9010)
+```
+
+> **Security note:** By default, `skip_permissions` is `False`. Without it
+> (and without a pre-configured Claude Code permissions file), tool-use
+> calls may not proceed in unattended mode. For trusted, sandboxed
+> environments only:
+>
+> ```python
+> adapter = ClaudeCodeAdapter(working_dir="...", skip_permissions=True)
+> ```
+>
+> Or via env var: `A2A_CLAUDE_SKIP_PERMISSIONS=1`
+
+### Codex
+
+```python
+from a2a_adapter import CodexAdapter, serve_agent
+
+adapter = CodexAdapter(working_dir="/path/to/project")
+serve_agent(adapter, port=9011)
+```
+
+> **Security note:** By default, `bypass_approvals` and `skip_git_check`
+> are `False`. For trusted, sandboxed environments only:
+>
+> ```python
+> adapter = CodexAdapter(working_dir="...", bypass_approvals=True, skip_git_check=True)
+> ```
+>
+> Or via env vars: `A2A_CODEX_BYPASS_APPROVALS=1` and `A2A_CODEX_SKIP_GIT_CHECK=1`
 
 ### Custom Function
 
@@ -178,6 +216,8 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed design documentation, and [D
 | **CrewAI** | `CrewAIAdapter` | - | - |
 | **OpenClaw** | `OpenClawAdapter` | - | - |
 | **Ollama** | `OllamaAdapter` | Yes | Always |
+| **Claude Code** | `ClaudeCodeAdapter` | Yes | Always |
+| **Codex** | `CodexAdapter` | - | - |
 | **Callable** | `CallableAdapter` | Optional | `streaming=True` param |
 
 ### Input Handling
@@ -250,8 +290,10 @@ python examples/langchain_agent.py    # LangChain (streaming)
 python examples/langgraph_server.py   # LangGraph (streaming)
 python examples/crewai_agent.py       # CrewAI
 python examples/openclaw_agent.py     # OpenClaw
-python examples/ollama_agent.py       # Ollama (local LLM)
-python examples/custom_adapter.py     # Custom BaseA2AAdapter
+python examples/ollama_agent.py         # Ollama (local LLM)
+python examples/claude_code_agent.py   # Claude Code
+python examples/codex_agent.py         # Codex
+python examples/custom_adapter.py      # Custom BaseA2AAdapter
 python examples/single_agent_client.py  # Test any running agent
 ```
 

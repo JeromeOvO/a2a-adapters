@@ -19,10 +19,10 @@ import uuid
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.events import EventQueue
 from a2a.server.tasks import TaskUpdater
-from a2a.types import Part, TextPart
-from a2a.utils.message import new_agent_text_message
+from a2a.types import Part, Task, TaskState, TaskStatus
 
 from .base_adapter import BaseA2AAdapter
+from .exceptions import CancelledByAdapterError
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +65,13 @@ class AdapterAgentExecutor(AgentExecutor):
             if not user_input:
                 logger.warning("Empty user input for task %s", context.task_id)
 
+            await event_queue.enqueue_event(
+                Task(
+                    id=context.task_id,
+                    context_id=context.context_id,
+                    status=TaskStatus(state=TaskState.TASK_STATE_SUBMITTED),
+                )
+            )
             await updater.start_work()
 
             if self._adapter.supports_streaming():
@@ -72,6 +79,10 @@ class AdapterAgentExecutor(AgentExecutor):
             else:
                 await self._execute_invoke(updater, user_input, context)
 
+        except CancelledByAdapterError:
+            # cancel() already emitted terminal canceled state.
+            # Do NOT emit failed — just exit silently.
+            logger.info("Task %s canceled by adapter", context.task_id)
         except Exception as e:
             logger.error(
                 "Adapter execution failed for task %s: %s",
@@ -79,10 +90,8 @@ class AdapterAgentExecutor(AgentExecutor):
                 e,
                 exc_info=True,
             )
-            error_msg = new_agent_text_message(
-                f"Agent execution failed: {e}",
-                context.context_id,
-                context.task_id,
+            error_msg = updater.new_agent_message(
+                [Part(text=f"Agent execution failed: {e}")]
             )
             await updater.failed(message=error_msg)
 
@@ -98,15 +107,15 @@ class AdapterAgentExecutor(AgentExecutor):
         """
         if isinstance(chunk, str):
             return chunk == ""
-        if isinstance(chunk, Part) and hasattr(chunk.root, "text"):
-            return chunk.root.text == ""
+        if isinstance(chunk, Part):
+            return chunk.text == ""
         return False
 
     @staticmethod
     def _to_parts(chunk: str | Part) -> list[Part]:
         """Convert a str or Part to a list[Part]."""
         if isinstance(chunk, str):
-            return [Part(root=TextPart(text=chunk))]
+            return [Part(text=chunk)]
         elif isinstance(chunk, Part):
             return [chunk]
         else:
@@ -143,9 +152,7 @@ class AdapterAgentExecutor(AgentExecutor):
 
         await updater.add_artifact(parts, name="response")
 
-        message = new_agent_text_message(
-            response_text, context.context_id, context.task_id
-        )
+        message = updater.new_agent_message([Part(text=response_text)])
         await updater.complete(message=message)
 
     def _extract_text_from_parts(self, parts: list[Part]) -> str:
@@ -160,8 +167,8 @@ class AdapterAgentExecutor(AgentExecutor):
         """
         texts = []
         for part in parts:
-            if hasattr(part.root, 'text'):
-                texts.append(part.root.text)
+            if part.text:
+                texts.append(part.text)
         return " ".join(texts) if texts else "[Non-text response]"
 
     async def _execute_streaming(
@@ -222,9 +229,7 @@ class AdapterAgentExecutor(AgentExecutor):
             )
 
         full_text = self._concatenate_chunks(chunks)
-        message = new_agent_text_message(
-            full_text, context.context_id, context.task_id
-        )
+        message = updater.new_agent_message([Part(text=full_text)])
         await updater.complete(message=message)
 
     def _concatenate_chunks(self, chunks: list[str | Part]) -> str:
@@ -241,8 +246,8 @@ class AdapterAgentExecutor(AgentExecutor):
         for chunk in chunks:
             if isinstance(chunk, str):
                 texts.append(chunk)
-            elif isinstance(chunk, Part) and hasattr(chunk.root, 'text'):
-                texts.append(chunk.root.text)
+            elif isinstance(chunk, Part) and chunk.text:
+                texts.append(chunk.text)
         return "".join(texts) if texts else "[Streamed non-text content]"
 
     async def cancel(
