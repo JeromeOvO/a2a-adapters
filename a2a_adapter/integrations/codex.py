@@ -24,12 +24,22 @@ logger = logging.getLogger(__name__)
 class CodexAdapter(BaseA2AAdapter):
     """Adapter for the OpenAI Codex CLI.
 
+    Args:
+        bypass_approvals: Enable ``--dangerously-bypass-approvals-and-sandbox``.
+            Disables all approval prompts and sandboxing. When ``None``
+            (default), falls back to ``A2A_CODEX_BYPASS_APPROVALS`` env var
+            (``1`` or ``true`` to enable). **Security risk** — only enable
+            in sandboxed, trusted environments.
+        skip_git_check: Enable ``--skip-git-repo-check``. Allows Codex to
+            run outside git repositories. When ``None`` (default), falls
+            back to ``A2A_CODEX_SKIP_GIT_CHECK`` env var.
+
     Example::
 
         from a2a_adapter import CodexAdapter, serve_agent
 
         adapter = CodexAdapter(working_dir="/path/to/project")
-        serve_agent(adapter, port=9010)
+        serve_agent(adapter, port=9011)
     """
 
     def __init__(
@@ -45,6 +55,8 @@ class CodexAdapter(BaseA2AAdapter):
         provider: dict | None = None,
         documentation_url: str | None = None,
         icon_url: str | None = None,
+        bypass_approvals: bool | None = None,
+        skip_git_check: bool | None = None,
     ) -> None:
         super().__init__(
             working_dir=working_dir,
@@ -62,6 +74,31 @@ class CodexAdapter(BaseA2AAdapter):
         self._provider = provider
         self._documentation_url = documentation_url
         self._icon_url = icon_url
+
+        if bypass_approvals is not None:
+            self.bypass_approvals = bypass_approvals
+        else:
+            self.bypass_approvals = os.getenv(
+                "A2A_CODEX_BYPASS_APPROVALS", ""
+            ).lower() in ("1", "true")
+        if self.bypass_approvals:
+            logger.warning(
+                "CodexAdapter: --dangerously-bypass-approvals-and-sandbox is "
+                "ENABLED. Codex will bypass all approval prompts and "
+                "sandboxing. Only use in trusted, sandboxed environments."
+            )
+
+        if skip_git_check is not None:
+            self.skip_git_check = skip_git_check
+        else:
+            self.skip_git_check = os.getenv(
+                "A2A_CODEX_SKIP_GIT_CHECK", ""
+            ).lower() in ("1", "true")
+        if self.skip_git_check:
+            logger.warning(
+                "CodexAdapter: --skip-git-repo-check is ENABLED. "
+                "Codex will run outside of git repositories."
+            )
 
     # ──── Public Interface ────
 
@@ -98,11 +135,11 @@ class CodexAdapter(BaseA2AAdapter):
         thread_id = self._sessions.get(context_key)
         if thread_id:
             cmd.extend(["resume", thread_id])
-        cmd.extend([
-            "--json",
-            "--dangerously-bypass-approvals-and-sandbox",
-            "--skip-git-repo-check",
-        ])
+        cmd.append("--json")
+        if self.bypass_approvals:
+            cmd.append("--dangerously-bypass-approvals-and-sandbox")
+        if self.skip_git_check:
+            cmd.append("--skip-git-repo-check")
         cmd.append(message)
         return CommandResult(args=cmd, used_resume=bool(thread_id))
 

@@ -25,6 +25,14 @@ logger = logging.getLogger(__name__)
 class ClaudeCodeAdapter(BaseA2AAdapter):
     """Adapter for Claude Code via the ``claude`` CLI.
 
+    Args:
+        skip_permissions: Enable ``--dangerously-skip-permissions`` flag.
+            Allows Claude Code to execute tools without confirmation.
+            When ``None`` (default), falls back to the
+            ``A2A_CLAUDE_SKIP_PERMISSIONS`` env var (``1`` or ``true``
+            to enable). **Security risk** — only enable in sandboxed,
+            trusted environments.
+
     Example::
 
         from a2a_adapter import ClaudeCodeAdapter, serve_agent
@@ -46,6 +54,7 @@ class ClaudeCodeAdapter(BaseA2AAdapter):
         provider: dict | None = None,
         documentation_url: str | None = None,
         icon_url: str | None = None,
+        skip_permissions: bool | None = None,
     ) -> None:
         super().__init__(
             working_dir=working_dir,
@@ -63,6 +72,19 @@ class ClaudeCodeAdapter(BaseA2AAdapter):
         self._provider = provider
         self._documentation_url = documentation_url
         self._icon_url = icon_url
+
+        if skip_permissions is not None:
+            self.skip_permissions = skip_permissions
+        else:
+            self.skip_permissions = os.getenv(
+                "A2A_CLAUDE_SKIP_PERMISSIONS", ""
+            ).lower() in ("1", "true")
+        if self.skip_permissions:
+            logger.warning(
+                "ClaudeCodeAdapter: --dangerously-skip-permissions is ENABLED. "
+                "Claude Code will execute tools without permission prompts. "
+                "Only use in trusted, sandboxed environments."
+            )
 
     # ──── Public Interface ────
 
@@ -110,9 +132,10 @@ class ClaudeCodeAdapter(BaseA2AAdapter):
             "-p", message,
             "--output-format", "stream-json",
             "--verbose",
-            "--dangerously-skip-permissions",
             "--disallowedTools", "AskUserQuestion",
         ]
+        if self.skip_permissions:
+            cmd.append("--dangerously-skip-permissions")
         session_id = self._sessions.get(context_key)
         if session_id:
             cmd.extend(["--resume", session_id])

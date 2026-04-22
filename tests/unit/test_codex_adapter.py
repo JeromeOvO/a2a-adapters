@@ -89,7 +89,7 @@ def mock_proc():
 
 class TestBuildCommand:
     def test_first_invocation(self, adapter):
-        """First invocation: codex exec --json --flags... <prompt> (prompt last)."""
+        """First invocation: codex exec --json <prompt> (prompt last)."""
         cmd = adapter._build_command("hello world", "_default")
         assert isinstance(cmd, CommandResult)
         assert cmd.args[0] == "codex"
@@ -97,14 +97,14 @@ class TestBuildCommand:
         # No resume on first invocation
         assert "resume" not in cmd.args
         assert "--json" in cmd.args
-        assert "--dangerously-bypass-approvals-and-sandbox" in cmd.args
-        assert "--skip-git-repo-check" in cmd.args
+        assert "--dangerously-bypass-approvals-and-sandbox" not in cmd.args
+        assert "--skip-git-repo-check" not in cmd.args
         # Prompt is ALWAYS the last argument
         assert cmd.args[-1] == "hello world"
         assert cmd.used_resume is False
 
     def test_resume_with_thread_id(self, adapter):
-        """Resume: codex exec resume <thread_id> --json --flags... <prompt>."""
+        """Resume: codex exec resume <thread_id> --json <prompt>."""
         adapter._sessions["ctx-1"] = "thread-xyz"
         cmd = adapter._build_command("continue", "ctx-1")
         assert cmd.args[0] == "codex"
@@ -112,8 +112,8 @@ class TestBuildCommand:
         assert cmd.args[2] == "resume"
         assert cmd.args[3] == "thread-xyz"
         assert "--json" in cmd.args
-        assert "--dangerously-bypass-approvals-and-sandbox" in cmd.args
-        assert "--skip-git-repo-check" in cmd.args
+        assert "--dangerously-bypass-approvals-and-sandbox" not in cmd.args
+        assert "--skip-git-repo-check" not in cmd.args
         # Prompt is still the last argument
         assert cmd.args[-1] == "continue"
         assert cmd.used_resume is True
@@ -131,6 +131,161 @@ class TestBuildCommand:
         """Prompt with spaces and special chars is passed as single arg."""
         cmd = adapter._build_command("fix the bug in main.py --verbose", "_default")
         assert cmd.args[-1] == "fix the bug in main.py --verbose"
+
+    def test_dangerous_flags_omitted_by_default(self, adapter):
+        cmd = adapter._build_command("hello", "_default")
+        assert "--dangerously-bypass-approvals-and-sandbox" not in cmd.args
+        assert "--skip-git-repo-check" not in cmd.args
+        assert "--json" in cmd.args
+
+    def test_bypass_approvals_when_enabled(self, tmp_path):
+        a = CodexAdapter(
+            working_dir=str(tmp_path),
+            bypass_approvals=True,
+            session_store_path=str(tmp_path / "s.json"),
+        )
+        cmd = a._build_command("hello", "_default")
+        assert "--dangerously-bypass-approvals-and-sandbox" in cmd.args
+        assert "--skip-git-repo-check" not in cmd.args
+
+    def test_skip_git_check_when_enabled(self, tmp_path):
+        a = CodexAdapter(
+            working_dir=str(tmp_path),
+            skip_git_check=True,
+            session_store_path=str(tmp_path / "s.json"),
+        )
+        cmd = a._build_command("hello", "_default")
+        assert "--skip-git-repo-check" in cmd.args
+        assert "--dangerously-bypass-approvals-and-sandbox" not in cmd.args
+
+    def test_both_flags_when_enabled(self, tmp_path):
+        a = CodexAdapter(
+            working_dir=str(tmp_path),
+            bypass_approvals=True,
+            skip_git_check=True,
+            session_store_path=str(tmp_path / "s.json"),
+        )
+        cmd = a._build_command("hello", "_default")
+        assert "--dangerously-bypass-approvals-and-sandbox" in cmd.args
+        assert "--skip-git-repo-check" in cmd.args
+        assert cmd.args[-1] == "hello"
+
+    def test_bypass_approvals_via_env_var(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("A2A_CODEX_BYPASS_APPROVALS", "1")
+        a = CodexAdapter(
+            working_dir=str(tmp_path),
+            session_store_path=str(tmp_path / "s.json"),
+        )
+        assert a.bypass_approvals is True
+        cmd = a._build_command("hello", "_default")
+        assert "--dangerously-bypass-approvals-and-sandbox" in cmd.args
+
+    def test_skip_git_check_via_env_var(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("A2A_CODEX_SKIP_GIT_CHECK", "true")
+        a = CodexAdapter(
+            working_dir=str(tmp_path),
+            session_store_path=str(tmp_path / "s.json"),
+        )
+        assert a.skip_git_check is True
+
+    def test_env_vars_unset_flags_off(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("A2A_CODEX_BYPASS_APPROVALS", raising=False)
+        monkeypatch.delenv("A2A_CODEX_SKIP_GIT_CHECK", raising=False)
+        a = CodexAdapter(
+            working_dir=str(tmp_path),
+            session_store_path=str(tmp_path / "s.json"),
+        )
+        assert a.bypass_approvals is False
+        assert a.skip_git_check is False
+
+    def test_bypass_approvals_env_var_false_like(self, tmp_path, monkeypatch):
+        for val in ("0", "false", "False", "no", ""):
+            monkeypatch.setenv("A2A_CODEX_BYPASS_APPROVALS", val)
+            a = CodexAdapter(
+                working_dir=str(tmp_path),
+                session_store_path=str(tmp_path / "s.json"),
+            )
+            assert a.bypass_approvals is False, f"Expected False for env var={val!r}"
+
+    def test_skip_git_check_env_var_false_like(self, tmp_path, monkeypatch):
+        for val in ("0", "false", "False", "no", ""):
+            monkeypatch.setenv("A2A_CODEX_SKIP_GIT_CHECK", val)
+            a = CodexAdapter(
+                working_dir=str(tmp_path),
+                session_store_path=str(tmp_path / "s.json"),
+            )
+            assert a.skip_git_check is False, f"Expected False for env var={val!r}"
+
+    def test_bypass_approvals_explicit_overrides_env_var(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("A2A_CODEX_BYPASS_APPROVALS", "1")
+        a = CodexAdapter(
+            working_dir=str(tmp_path),
+            bypass_approvals=False,
+            session_store_path=str(tmp_path / "s.json"),
+        )
+        assert a.bypass_approvals is False
+        cmd = a._build_command("hello", "_default")
+        assert "--dangerously-bypass-approvals-and-sandbox" not in cmd.args
+
+    def test_skip_git_check_explicit_overrides_env_var(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("A2A_CODEX_SKIP_GIT_CHECK", "1")
+        a = CodexAdapter(
+            working_dir=str(tmp_path),
+            skip_git_check=False,
+            session_store_path=str(tmp_path / "s.json"),
+        )
+        assert a.skip_git_check is False
+        cmd = a._build_command("hello", "_default")
+        assert "--skip-git-repo-check" not in cmd.args
+
+    def test_bypass_approvals_logs_warning(self, tmp_path, caplog):
+        import logging
+        with caplog.at_level(logging.WARNING):
+            CodexAdapter(
+                working_dir=str(tmp_path),
+                bypass_approvals=True,
+                session_store_path=str(tmp_path / "s.json"),
+            )
+        assert "ENABLED" in caplog.text
+
+    def test_skip_git_check_logs_warning(self, tmp_path, caplog):
+        import logging
+        with caplog.at_level(logging.WARNING):
+            CodexAdapter(
+                working_dir=str(tmp_path),
+                skip_git_check=True,
+                session_store_path=str(tmp_path / "s.json"),
+            )
+        assert "ENABLED" in caplog.text
+
+    def test_prompt_still_last_with_flags(self, tmp_path):
+        for bypass, skip in [(True, True), (True, False), (False, True), (False, False)]:
+            a = CodexAdapter(
+                working_dir=str(tmp_path),
+                bypass_approvals=bypass,
+                skip_git_check=skip,
+                session_store_path=str(tmp_path / "s.json"),
+            )
+            cmd = a._build_command("the prompt", "_default")
+            assert cmd.args[-1] == "the prompt"
+
+    def test_env_vars_param_does_not_enable_dangerous_flags(self, tmp_path, monkeypatch):
+        """env_vars is for the subprocess environment, not adapter config."""
+        monkeypatch.delenv("A2A_CODEX_BYPASS_APPROVALS", raising=False)
+        monkeypatch.delenv("A2A_CODEX_SKIP_GIT_CHECK", raising=False)
+        a = CodexAdapter(
+            working_dir=str(tmp_path),
+            env_vars={
+                "A2A_CODEX_BYPASS_APPROVALS": "1",
+                "A2A_CODEX_SKIP_GIT_CHECK": "1",
+            },
+            session_store_path=str(tmp_path / "s.json"),
+        )
+        assert a.bypass_approvals is False
+        assert a.skip_git_check is False
+        cmd = a._build_command("hello", "_default")
+        assert "--dangerously-bypass-approvals-and-sandbox" not in cmd.args
+        assert "--skip-git-repo-check" not in cmd.args
 
 
 # ──── Test: _parse_result ────
@@ -775,6 +930,18 @@ class TestLoaderIntegration:
         assert isinstance(a, CodexAdapter)
         assert a.timeout == 300
         assert a.codex_path == "/opt/codex"
+
+    def test_load_adapter_with_dangerous_flags(self, tmp_path):
+        a = load_adapter({
+            "adapter": "codex",
+            "working_dir": str(tmp_path),
+            "bypass_approvals": True,
+            "skip_git_check": True,
+            "session_store_path": str(tmp_path / "s.json"),
+        })
+        assert isinstance(a, CodexAdapter)
+        assert a.bypass_approvals is True
+        assert a.skip_git_check is True
 
 
 # ──── Test: Server integration ────

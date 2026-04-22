@@ -131,7 +131,7 @@ class TestBuildCommand:
         idx_of = cmd.args.index("--output-format")
         assert cmd.args[idx_of + 1] == "stream-json"
         assert "--verbose" in cmd.args
-        assert "--dangerously-skip-permissions" in cmd.args
+        assert "--dangerously-skip-permissions" not in cmd.args
         assert "--disallowedTools" in cmd.args
         idx_dt = cmd.args.index("--disallowedTools")
         assert cmd.args[idx_dt + 1] == "AskUserQuestion"
@@ -155,6 +155,88 @@ class TestBuildCommand:
         )
         cmd = a._build_command("msg", "_default")
         assert cmd.args[0] == "/usr/local/bin/claude"
+
+    def test_skip_permissions_flag_omitted_by_default(self, adapter):
+        cmd = adapter._build_command("hello", "_default")
+        assert "--dangerously-skip-permissions" not in cmd.args
+        assert "--disallowedTools" in cmd.args
+
+    def test_skip_permissions_flag_when_enabled(self, tmp_path):
+        a = ClaudeCodeAdapter(
+            working_dir=str(tmp_path),
+            skip_permissions=True,
+            session_store_path=str(tmp_path / "s.json"),
+        )
+        cmd = a._build_command("hello", "_default")
+        assert "--dangerously-skip-permissions" in cmd.args
+
+    def test_skip_permissions_via_env_var(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("A2A_CLAUDE_SKIP_PERMISSIONS", "1")
+        a = ClaudeCodeAdapter(
+            working_dir=str(tmp_path),
+            session_store_path=str(tmp_path / "s.json"),
+        )
+        assert a.skip_permissions is True
+        cmd = a._build_command("hello", "_default")
+        assert "--dangerously-skip-permissions" in cmd.args
+
+    def test_skip_permissions_env_var_true(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("A2A_CLAUDE_SKIP_PERMISSIONS", "True")
+        a = ClaudeCodeAdapter(
+            working_dir=str(tmp_path),
+            session_store_path=str(tmp_path / "s.json"),
+        )
+        assert a.skip_permissions is True
+
+    def test_skip_permissions_env_var_false_like(self, tmp_path, monkeypatch):
+        for val in ("0", "false", "False", "no", ""):
+            monkeypatch.setenv("A2A_CLAUDE_SKIP_PERMISSIONS", val)
+            a = ClaudeCodeAdapter(
+                working_dir=str(tmp_path),
+                session_store_path=str(tmp_path / "s.json"),
+            )
+            assert a.skip_permissions is False, f"Expected False for env var={val!r}"
+
+    def test_skip_permissions_env_var_unset(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("A2A_CLAUDE_SKIP_PERMISSIONS", raising=False)
+        a = ClaudeCodeAdapter(
+            working_dir=str(tmp_path),
+            session_store_path=str(tmp_path / "s.json"),
+        )
+        assert a.skip_permissions is False
+
+    def test_skip_permissions_explicit_overrides_env_var(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("A2A_CLAUDE_SKIP_PERMISSIONS", "1")
+        a = ClaudeCodeAdapter(
+            working_dir=str(tmp_path),
+            skip_permissions=False,
+            session_store_path=str(tmp_path / "s.json"),
+        )
+        assert a.skip_permissions is False
+        cmd = a._build_command("hello", "_default")
+        assert "--dangerously-skip-permissions" not in cmd.args
+
+    def test_skip_permissions_logs_warning(self, tmp_path, caplog):
+        import logging
+        with caplog.at_level(logging.WARNING):
+            ClaudeCodeAdapter(
+                working_dir=str(tmp_path),
+                skip_permissions=True,
+                session_store_path=str(tmp_path / "s.json"),
+            )
+        assert "ENABLED" in caplog.text
+
+    def test_env_vars_param_does_not_enable_skip_permissions(self, tmp_path, monkeypatch):
+        """env_vars is for the subprocess environment, not adapter config."""
+        monkeypatch.delenv("A2A_CLAUDE_SKIP_PERMISSIONS", raising=False)
+        a = ClaudeCodeAdapter(
+            working_dir=str(tmp_path),
+            env_vars={"A2A_CLAUDE_SKIP_PERMISSIONS": "1"},
+            session_store_path=str(tmp_path / "s.json"),
+        )
+        assert a.skip_permissions is False
+        cmd = a._build_command("hello", "_default")
+        assert "--dangerously-skip-permissions" not in cmd.args
 
 
 # ──── Test: _parse_invoke_output ────
@@ -1143,6 +1225,16 @@ class TestLoaderIntegration:
         assert a.timeout == 120
         assert a.claude_path == "/opt/claude"
 
+    def test_load_adapter_with_skip_permissions(self, tmp_path):
+        a = load_adapter({
+            "adapter": "claude-code",
+            "working_dir": str(tmp_path),
+            "skip_permissions": True,
+            "session_store_path": str(tmp_path / "s.json"),
+        })
+        assert isinstance(a, ClaudeCodeAdapter)
+        assert a.skip_permissions is True
+
 
 # ──── Test: Server integration ────
 
@@ -1195,9 +1287,6 @@ async def test_close_kills_active_processes(adapter):
     assert len(adapter._active_processes) == 0
     assert len(adapter._cancelled_tasks) == 0
     assert len(adapter._killed_tasks) == 0
-
-
-# ──── Test: Environment variables ────
 
 
 # ──── Test: stdout EOF before returncode set ────
