@@ -55,6 +55,39 @@ logger = logging.getLogger(__name__)
 VALID_THINKING_LEVELS = {"off", "minimal", "low", "medium", "high", "xhigh"}
 
 
+def _extract_openclaw_status_hint(framework_output: Dict[str, Any]) -> str | None:
+    """Extract a human-readable completion hint from OpenClaw metadata."""
+    meta = framework_output.get("meta")
+    if not isinstance(meta, dict):
+        return None
+
+    stop_reason = meta.get("stopReason")
+    if isinstance(stop_reason, str) and stop_reason.strip():
+        return f"OpenClaw completed without visible output (stop reason: {stop_reason.strip()})"
+
+    warning = meta.get("warning")
+    if isinstance(warning, str) and warning.strip():
+        return warning.strip()
+
+    return None
+
+
+def _extract_openclaw_failure_message(framework_output: Dict[str, Any]) -> str | None:
+    """Best-effort extraction of an explicit failure from OpenClaw JSON."""
+    for key in ("error", "error_message", "message"):
+        value = framework_output.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+
+    meta = framework_output.get("meta")
+    if isinstance(meta, dict):
+        for key in ("error", "error_message"):
+            value = meta.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+    return None
+
+
 def _extract_json_from_output(stdout_text: str) -> dict:
     """Extract JSON object from stdout that may contain prefix text.
 
@@ -742,6 +775,22 @@ class OpenClawAgentAdapter(BaseAgentAdapter):
                 )
                 return
 
+            failure_message = _extract_openclaw_failure_message(framework_output)
+            if failure_message:
+                failed_task = Task(
+                    id=task_id,
+                    context_id=context_id,
+                    status=TaskStatus(
+                        state=TaskState.failed,
+                        message=self._build_status_message(context_id, failure_message),
+                        timestamp=datetime.now(timezone.utc).isoformat(),
+                    ),
+                )
+                await self.task_store.save(failed_task)
+                self._record_task_completion(task_id)
+                await self._send_push_notification(task_id, failed_task)
+                return
+
             # Convert to message for history
             response_message = self._create_response_message(framework_output, context_id)
 
@@ -749,22 +798,32 @@ class OpenClawAgentAdapter(BaseAgentAdapter):
             history = []
             if hasattr(params, "message") and params.message:
                 history.append(params.message)
-            history.append(response_message)
+            if response_message is not None:
+                history.append(response_message)
 
             # Create artifact for the response (A2A spec: task outputs go in artifacts)
             response_artifact = self._create_response_artifact(framework_output)
 
             # Update task to completed state
             now = datetime.now(timezone.utc).isoformat()
+            status_message = None
+            artifacts = []
+            if response_artifact is not None:
+                artifacts.append(response_artifact)
+            else:
+                hint = _extract_openclaw_status_hint(framework_output) or "OpenClaw completed without visible output"
+                status_message = self._build_status_message(context_id, hint)
+
             completed_task = Task(
                 id=task_id,
                 context_id=context_id,
                 status=TaskStatus(
                     state=TaskState.completed,
+                    message=status_message,
                     timestamp=now,
                 ),
-                artifacts=[response_artifact],  # A2A-compliant: outputs in artifacts
-                history=history,
+                artifacts=artifacts,  # A2A-compliant: outputs in artifacts when present
+                history=history or None,
             )
 
             await self.task_store.save(completed_task)
@@ -1110,46 +1169,52 @@ class OpenClawAgentAdapter(BaseAgentAdapter):
             A2A Message with the response
         """
         context_id = self._extract_context_id(params)
-        return self._create_response_message(framework_output, context_id)
+        task_context_id = context_id or str(uuid.uuid4())
+        failure_message = _extract_openclaw_failure_message(framework_output)
+        if failure_message:
+            return Task(
+                id=str(uuid.uuid4()),
+                context_id=task_context_id,
+                status=TaskStatus(
+                    state=TaskState.failed,
+                    message=self._build_status_message(context_id, failure_message),
+                ),
+            )
+
+        response_message = self._create_response_message(framework_output, context_id)
+        if response_message is not None:
+            return response_message
+
+        hint = _extract_openclaw_status_hint(framework_output) or "OpenClaw completed without visible output"
+        return Task(
+            id=str(uuid.uuid4()),
+            context_id=task_context_id,
+            status=TaskStatus(
+                state=TaskState.completed,
+                message=self._build_status_message(context_id, hint),
+            ),
+            artifacts=[],
+        )
+
+    @staticmethod
+    def _build_status_message(context_id: str | None, text: str) -> Message:
+        return Message(
+            role=Role.agent,
+            message_id=str(uuid.uuid4()),
+            context_id=context_id,
+            parts=[Part(root=TextPart(text=text))],
+        )
 
     def _create_response_message(
         self, framework_output: Dict[str, Any], context_id: str | None
-    ) -> Message:
+    ) -> Message | None:
         """Create a response Message from OpenClaw output."""
         logger.debug("_create_response_message called with framework_output keys: %s", 
                      list(framework_output.keys()) if isinstance(framework_output, dict) else type(framework_output))
-        parts: list[Part] = []
-
-        # Extract payloads
-        payloads = framework_output.get("payloads", [])
-        logger.debug("Extracting from %d payloads", len(payloads))
-        for i, payload in enumerate(payloads):
-            # Extract text
-            text = payload.get("text", "")
-            logger.debug("Payload[%d] text length: %d, preview: %s", i, len(text) if text else 0, (text or "")[:100])
-            if text:
-                parts.append(Part(root=TextPart(text=text)))
-
-            # Extract media URLs
-            media_urls = payload.get("mediaUrls") or []
-            if payload.get("mediaUrl"):
-                media_urls.append(payload["mediaUrl"])
-
-            for url in media_urls:
-                # Detect MIME type from URL extension
-                mime_type = self._detect_mime_type(url)
-                parts.append(
-                    Part(
-                        root=FilePart(
-                            file=FileWithUri(uri=url, mimeType=mime_type),
-                        )
-                    )
-                )
-
-        # Fallback if no parts extracted
+        parts = self._extract_response_parts(framework_output)
         if not parts:
-            logger.warning("No parts extracted from OpenClaw output, using empty fallback")
-            parts.append(Part(root=TextPart(text="")))
+            logger.info("No visible OpenClaw parts extracted for response message")
+            return None
 
         logger.debug("Created Message with %d parts", len(parts))
         for i, part in enumerate(parts):
@@ -1163,28 +1228,25 @@ class OpenClawAgentAdapter(BaseAgentAdapter):
             parts=parts,
         )
 
-    def _create_response_artifact(self, framework_output: Dict[str, Any]) -> Artifact:
-        """
-        Create an Artifact from OpenClaw output.
-        
-        Per A2A spec, task outputs should be stored in artifacts, not messages.
-        Messages are for conversation history; artifacts are for task results.
-        """
+    def _extract_response_parts(self, framework_output: Dict[str, Any]) -> list[Part]:
+        """Extract visible response parts from OpenClaw payloads."""
         parts: list[Part] = []
-
-        # Extract payloads
         payloads = framework_output.get("payloads", [])
-        for payload in payloads:
-            # Extract text
+        logger.debug("Extracting from %d payloads", len(payloads))
+        for i, payload in enumerate(payloads):
             text = payload.get("text", "")
+            logger.debug(
+                "Payload[%d] text length: %d, preview: %s",
+                i,
+                len(text) if text else 0,
+                (text or "")[:100],
+            )
             if text:
                 parts.append(Part(root=TextPart(text=text)))
 
-            # Extract media URLs
             media_urls = payload.get("mediaUrls") or []
             if payload.get("mediaUrl"):
                 media_urls.append(payload["mediaUrl"])
-
             for url in media_urls:
                 mime_type = self._detect_mime_type(url)
                 parts.append(
@@ -1194,10 +1256,18 @@ class OpenClawAgentAdapter(BaseAgentAdapter):
                         )
                     )
                 )
+        return parts
 
-        # Fallback if no parts extracted
+    def _create_response_artifact(self, framework_output: Dict[str, Any]) -> Artifact | None:
+        """
+        Create an Artifact from OpenClaw output.
+        
+        Per A2A spec, task outputs should be stored in artifacts, not messages.
+        Messages are for conversation history; artifacts are for task results.
+        """
+        parts = self._extract_response_parts(framework_output)
         if not parts:
-            parts.append(Part(root=TextPart(text="")))
+            return None
 
         return Artifact(
             artifact_id=str(uuid.uuid4()),
