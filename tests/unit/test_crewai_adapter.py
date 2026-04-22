@@ -92,11 +92,11 @@ class TestCrewAIAdapterBasic:
 
 
 class TestCrewAIAdapterDictTextHandling:
-    """Tests for handling dict type in part.root.text (edge case fix)."""
+    """Tests for handling dict type in part.text (edge case fix)."""
 
     @pytest.mark.asyncio
     async def test_to_framework_handles_dict_text(self):
-        """Test that dict type in part.root.text is handled correctly."""
+        """Test that dict type in part.text is handled correctly."""
         mock_crew = MagicMock()
         adapter = CrewAIAgentAdapter(crew=mock_crew)
 

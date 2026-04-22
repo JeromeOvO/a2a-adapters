@@ -126,7 +126,7 @@ async def test_execute_invoke_basic():
         artifact_call = updater_instance.add_artifact.call_args
         parts = artifact_call[0][0]
         assert len(parts) == 1
-        assert parts[0].root.text == "hello from adapter"
+        assert parts[0].text == "hello from adapter"
 
 
 @pytest.mark.asyncio
