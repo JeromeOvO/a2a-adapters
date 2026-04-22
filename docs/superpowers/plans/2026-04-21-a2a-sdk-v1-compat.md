@@ -32,6 +32,7 @@
 - `tests/test_base_adapter.py` — remove TextPart, fix Part construction/accessor
 - `tests/test_callable.py` — remove unused TextPart import
 - `tests/test_executor.py` — remove TextPart, fix Part construction/accessors/enums
+- `tests/unit/test_v02_n8n_multimodal.py` — **NEW**: targeted tests for V0.2 N8n multimodal rewrite
 - `tests/unit/test_adapter.py` — full V0.1 test migration
 - `tests/unit/test_callable_adapter.py` — full V0.1 test migration
 - `tests/unit/test_crewai_adapter.py` — full V0.1 test migration
@@ -155,60 +156,15 @@ with:
 
 - [ ] **Step 3: Wrap client.py in try/except for graceful degradation**
 
-Replace the entire content of `a2a_adapter/client.py` with:
+This is a structural edit, not a full rewrite. The original module body (classes and functions) stays verbatim — only the wrapping changes.
+
+**3a.** At the very top of the file, keep the module docstring (lines 1-12) unchanged.
+
+**3b.** After the docstring, wrap everything from `import warnings` (line 14) through the end of the file in a `try:` block. Indent the entire existing body by 4 spaces. This means lines 14-284 (all imports, `AdapterRequestHandler` class, `build_agent_app()`, and `serve_agent()`) become the body of `try:`.
+
+**3c.** After the `try:` block, add an `except ImportError:` with stub functions:
 
 ```python
-"""
-Single-agent A2A server helpers.
-
-.. deprecated:: 0.2.0
-    This module is deprecated. Use :mod:`a2a_adapter.server` instead:
-
-    - ``build_agent_app()`` → ``to_a2a()``
-    - ``serve_agent(card, adapter)`` → ``serve_agent(adapter)``
-    - ``AdapterRequestHandler`` → removed (SDK's DefaultRequestHandler)
-
-    This module will be removed in v0.3.0.
-"""
-
-try:
-    import warnings
-    from typing import AsyncGenerator
-
-    import uvicorn
-    from a2a.server.apps import A2AStarletteApplication
-    from a2a.server.request_handlers.request_handler import RequestHandler
-    from a2a.types import UnsupportedOperationError
-    from a2a.utils.errors import ServerError
-    from a2a.server.context import ServerCallContext
-    from a2a.types import (
-        AgentCard,
-        CancelTaskRequest,
-        CancelTaskResponse,
-        DeleteTaskPushNotificationConfigParams,
-        DeleteTaskPushNotificationConfigResponse,
-        GetTaskPushNotificationConfigParams,
-        GetTaskPushNotificationConfigResponse,
-        GetTaskRequest,
-        GetTaskResponse,
-        ListTaskPushNotificationConfigParams,
-        ListTaskPushNotificationConfigResponse,
-        Message,
-        MessageSendParams,
-        PushNotificationConfig,
-        SetTaskPushNotificationConfigRequest,
-        SetTaskPushNotificationConfigResponse,
-        Task,
-        TaskResubscriptionRequest,
-        TaskStatusUpdateEvent,
-    )
-
-    from .adapter import BaseAgentAdapter
-
-    # --- Original module body (unchanged) ---
-    # [paste the entire class and function definitions from the original client.py here,
-    #  from class AdapterRequestHandler through the end of serve_agent()]
-
 except ImportError:
 
     def build_agent_app(*args, **kwargs):
@@ -226,7 +182,7 @@ except ImportError:
         )
 ```
 
-**Important:** Keep the entire original module body inside the `try:` block verbatim. Only the imports and class/function definitions go inside `try:`. The `except ImportError:` block defines stub functions.
+**The result:** module docstring at top level, `try:` containing the entire original body (unchanged except indentation), `except ImportError:` with two stubs. No class or function definitions are removed or modified.
 
 - [ ] **Step 4: Update base_adapter.py docstrings**
 
@@ -723,7 +679,7 @@ Replace the entire method body with proto Part field detection:
         images = []
 
         for part in context.message.parts:
-            if part.url or part.raw:
+            if part.HasField("url") or part.HasField("raw"):
                 try:
                     file_data = await self._fetch_file_content(part)
                     file_entry: Dict[str, Any] = {
@@ -736,7 +692,7 @@ Replace the entire method body with proto Part field detection:
                     else:
                         file_entry["data"] = file_data
 
-                    if part.url:
+                    if part.HasField("url"):
                         file_entry["uri"] = part.url
 
                     if part.media_type and part.media_type.startswith("image/"):
@@ -771,12 +727,12 @@ Replace the entire method:
         Returns:
             File content as bytes.
         """
-        if part.url:
+        if part.HasField("url"):
             client = await self._get_client()
             resp = await client.get(part.url)
             resp.raise_for_status()
             return resp.content
-        elif part.raw:
+        elif part.HasField("raw"):
             return part.raw
         else:
             raise ValueError(f"Part has no url or raw data: {part}")
@@ -871,6 +827,192 @@ Run: `uv run python -c "from a2a_adapter.integrations.n8n import N8nAdapter, N8n
 ```bash
 git add a2a_adapter/integrations/n8n.py
 git commit -m "fix: V1.0 compat for n8n adapter — V0.2 multimodal rewrite + import restructure + V0.1 fixes"
+```
+
+---
+
+## Task 7b: Targeted tests for N8n V0.2 multimodal rewrite
+
+This is the riskiest behavior change in the sweep — the only V0.2 runtime code rewrite. The existing repo has no `test_v02_n8n.py`. We add targeted tests for the three rewritten methods.
+
+**Files:**
+- Create: `tests/unit/test_v02_n8n_multimodal.py`
+
+- [ ] **Step 1: Write tests for `_build_multimodal_payload()`**
+
+```python
+"""Tests for N8nAdapter V0.2 multimodal methods after V1.0 proto migration."""
+
+import base64
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+from a2a.types import Part
+
+from a2a_adapter.integrations.n8n import N8nAdapter
+
+
+class TestBuildMultimodalPayload:
+    """Test _build_multimodal_payload with V1.0 proto Part fields."""
+
+    @pytest.fixture
+    def adapter(self):
+        return N8nAdapter(
+            webhook_url="http://localhost:5678/webhook/test",
+            multimodal_mode=True,
+        )
+
+    async def test_text_only_parts_ignored(self, adapter):
+        """Parts with only text set should not appear in files/images."""
+        ctx = MagicMock()
+        text_part = Part(text="hello")
+        ctx.message.parts = [text_part]
+
+        payload = await adapter._build_multimodal_payload("hello", "ctx-1", ctx)
+        assert "files" not in payload
+        assert "images" not in payload
+
+    async def test_url_part_detected_as_file(self, adapter):
+        """A Part with url set should be fetched and added to files."""
+        ctx = MagicMock()
+        file_part = Part(url="http://example.com/doc.pdf", filename="doc.pdf", media_type="application/pdf")
+        ctx.message.parts = [file_part]
+
+        mock_resp = MagicMock()
+        mock_resp.content = b"pdf-bytes"
+        mock_resp.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_resp)
+        adapter._client = mock_client
+
+        payload = await adapter._build_multimodal_payload("check this", "ctx-1", ctx)
+        assert "files" in payload
+        assert len(payload["files"]) == 1
+        assert payload["files"][0]["name"] == "doc.pdf"
+        assert payload["files"][0]["mime_type"] == "application/pdf"
+        assert payload["files"][0]["data"] == base64.b64encode(b"pdf-bytes").decode("utf-8")
+        assert payload["files"][0]["uri"] == "http://example.com/doc.pdf"
+
+    async def test_image_categorized_separately(self, adapter):
+        """A Part with image/* media_type should go to images, not files."""
+        ctx = MagicMock()
+        img_part = Part(url="http://example.com/photo.png", filename="photo.png", media_type="image/png")
+        ctx.message.parts = [img_part]
+
+        mock_resp = MagicMock()
+        mock_resp.content = b"png-bytes"
+        mock_resp.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_resp)
+        adapter._client = mock_client
+
+        payload = await adapter._build_multimodal_payload("look at this", "ctx-1", ctx)
+        assert "images" in payload
+        assert "files" not in payload
+        assert payload["images"][0]["name"] == "photo.png"
+
+    async def test_raw_part_no_fetch(self, adapter):
+        """A Part with raw bytes should use data directly, not HTTP fetch."""
+        ctx = MagicMock()
+        raw_part = Part(raw=b"raw-content", filename="data.bin", media_type="application/octet-stream")
+        ctx.message.parts = [raw_part]
+
+        payload = await adapter._build_multimodal_payload("process", "ctx-1", ctx)
+        assert "files" in payload
+        assert payload["files"][0]["data"] == base64.b64encode(b"raw-content").decode("utf-8")
+
+
+class TestFetchFileContent:
+    """Test _fetch_file_content with V1.0 proto Part fields."""
+
+    @pytest.fixture
+    def adapter(self):
+        return N8nAdapter(webhook_url="http://localhost:5678/webhook/test")
+
+    async def test_url_part_fetches(self, adapter):
+        part = Part(url="http://example.com/file.bin")
+        mock_resp = MagicMock()
+        mock_resp.content = b"fetched"
+        mock_resp.raise_for_status = MagicMock()
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_resp)
+        adapter._client = mock_client
+
+        result = await adapter._fetch_file_content(part)
+        assert result == b"fetched"
+
+    async def test_raw_part_returns_directly(self, adapter):
+        part = Part(raw=b"inline-data")
+        result = await adapter._fetch_file_content(part)
+        assert result == b"inline-data"
+
+    async def test_empty_part_raises(self, adapter):
+        part = Part(text="just text")
+        with pytest.raises(ValueError, match="no url or raw"):
+            await adapter._fetch_file_content(part)
+
+
+class TestExtractResponse:
+    """Test _extract_response with V1.0 Part construction."""
+
+    @pytest.fixture
+    def adapter(self):
+        return N8nAdapter(
+            webhook_url="http://localhost:5678/webhook/test",
+            multimodal_mode=True,
+        )
+
+    def test_text_only_response(self, adapter):
+        output = {"output": "hello world"}
+        parts = adapter._extract_response(output)
+        assert len(parts) == 1
+        assert parts[0].text == "hello world"
+
+    def test_with_files(self, adapter):
+        output = {
+            "output": "here are results",
+            "files": [{"url": "http://example.com/report.pdf", "name": "report.pdf", "mime_type": "application/pdf"}],
+        }
+        parts = adapter._extract_response(output)
+        assert len(parts) == 2
+        assert parts[0].text == "here are results"
+        assert parts[1].url == "http://example.com/report.pdf"
+        assert parts[1].filename == "report.pdf"
+        assert parts[1].media_type == "application/pdf"
+
+    def test_with_images(self, adapter):
+        output = {
+            "output": "chart generated",
+            "images": [{"url": "http://example.com/chart.png", "name": "chart.png", "mimeType": "image/png"}],
+        }
+        parts = adapter._extract_response(output)
+        assert len(parts) == 2
+        assert parts[1].url == "http://example.com/chart.png"
+        assert parts[1].media_type == "image/png"
+
+    def test_empty_response(self, adapter):
+        parts = adapter._extract_response({})
+        assert len(parts) == 1
+        assert parts[0].text == "[Empty response]"
+
+    def test_non_dict_response(self, adapter):
+        parts = adapter._extract_response([{"output": "from list"}])
+        assert len(parts) == 1
+        assert "from list" in parts[0].text
+```
+
+- [ ] **Step 2: Run the tests**
+
+Run: `uv run pytest tests/unit/test_v02_n8n_multimodal.py -v`
+Expected: All tests pass (depends on Task 7 being done first)
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add tests/unit/test_v02_n8n_multimodal.py
+git commit -m "test: add targeted tests for N8n V0.2 multimodal rewrite (V1.0 proto Part fields)"
 ```
 
 ---
