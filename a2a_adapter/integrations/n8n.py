@@ -14,6 +14,8 @@ Supports flexible input handling:
 - message_field: Simple text mapping to a single key (default fallback)
 """
 
+from __future__ import annotations
+
 import asyncio
 import base64
 import json
@@ -29,18 +31,30 @@ from httpx import ConnectError, HTTPStatusError, ReadTimeout
 from a2a.server.agent_execution import RequestContext
 from a2a.types import (
     Artifact,
-    FilePart,
-    FileWithBytes,
-    FileWithUri,
     Message,
-    MessageSendParams,
     Part,
     Role,
     Task,
     TaskState,
     TaskStatus,
-    TextPart,
 )
+
+try:
+    from a2a.types import TextPart
+except ImportError:
+    TextPart = None  # type: ignore
+
+try:
+    from a2a.types import FilePart, FileWithBytes, FileWithUri
+except ImportError:
+    FilePart = None  # type: ignore
+    FileWithBytes = None  # type: ignore
+    FileWithUri = None  # type: ignore
+
+try:
+    from a2a.types import SendMessageRequest as MessageSendParams
+except ImportError:
+    MessageSendParams = None  # type: ignore
 
 from ..adapter import BaseAgentAdapter
 from ..base_adapter import AdapterMetadata, BaseA2AAdapter
@@ -280,31 +294,19 @@ class N8nAdapter(BaseA2AAdapter):
         context_id: str | None,
         context: RequestContext,
     ) -> Dict[str, Any]:
-        """Build webhook payload with files/images from context.message.parts.
-
-        Args:
-            user_input: The user's text message.
-            context_id: Conversation context ID.
-            context: RequestContext with access to multimodal parts.
-
-        Returns:
-            Payload dict with files/images encoded as base64 or URIs.
-        """
-        # Start with base text payload
+        """Build webhook payload with files/images from context.message.parts."""
         payload = self._build_payload(user_input, context_id)
 
         files = []
         images = []
 
-        # Extract multimodal parts from context
         for part in context.message.parts:
-            if isinstance(part.root, FilePart):
-                file_part = part.root.file
+            if part.HasField("url") or part.HasField("raw"):
                 try:
-                    file_data = await self._fetch_file_content(file_part)
+                    file_data = await self._fetch_file_content(part)
                     file_entry: Dict[str, Any] = {
-                        "name": file_part.name or "file",
-                        "mime_type": file_part.mimeType,
+                        "name": part.filename or "file",
+                        "mime_type": part.media_type,
                     }
 
                     if self.encode_files_base64:
@@ -312,21 +314,19 @@ class N8nAdapter(BaseA2AAdapter):
                     else:
                         file_entry["data"] = file_data
 
-                    if isinstance(file_part, FileWithUri) and file_part.uri:
-                        file_entry["uri"] = file_part.uri
+                    if part.HasField("url"):
+                        file_entry["uri"] = part.url
 
-                    # Categorize as image or file
-                    if file_part.mimeType and file_part.mimeType.startswith("image/"):
+                    if part.media_type and part.media_type.startswith("image/"):
                         images.append(file_entry)
                     else:
                         files.append(file_entry)
 
                 except Exception as e:
                     logger.warning(
-                        "Failed to fetch file %s: %s", file_part.name or "unknown", e
+                        "Failed to fetch file %s: %s", part.filename or "unknown", e
                     )
 
-        # Add files/images to payload if present
         if files:
             payload[self.file_field] = files
         if images:
@@ -334,27 +334,24 @@ class N8nAdapter(BaseA2AAdapter):
 
         return payload
 
-    async def _fetch_file_content(self, file_part: FileWithUri | FileWithBytes) -> bytes:
-        """Fetch file content from URI or return embedded data.
+    async def _fetch_file_content(self, part: Part) -> bytes:
+        """Fetch file content from URL or return embedded raw data.
 
         Args:
-            file_part: FileWithUri or FileWithBytes from A2A message.
+            part: A2A Part with url or raw field set.
 
         Returns:
             File content as bytes.
-
-        Raises:
-            ValueError: If file_part is neither FileWithUri nor FileWithBytes.
         """
-        if isinstance(file_part, FileWithUri) and file_part.uri:
+        if part.HasField("url"):
             client = await self._get_client()
-            resp = await client.get(file_part.uri)
+            resp = await client.get(part.url)
             resp.raise_for_status()
             return resp.content
-        elif isinstance(file_part, FileWithBytes):
-            return file_part.data
+        elif part.HasField("raw"):
+            return part.raw
         else:
-            raise ValueError(f"FilePart has no uri or data: {file_part}")
+            raise ValueError(f"Part has no url or raw data: {part}")
 
     # ──── Internal: HTTP POST with Retry ────
 
@@ -453,64 +450,43 @@ class N8nAdapter(BaseA2AAdapter):
         return json.dumps(filtered, indent=2) if filtered else ""
 
     def _extract_response(self, output: Any) -> list[Part]:
-        """Extract response with multimodal content detection.
-
-        Always returns list[Part] for consistent typing when multimodal_mode
-        is enabled. The executor handles both str and list[Part] return types.
-
-        Args:
-            output: Response from n8n webhook.
-
-        Returns:
-            list[Part]: Extracted parts (text, files, images).
-        """
+        """Extract response with multimodal content detection."""
         if not isinstance(output, dict):
             text = self._extract_response_text(output)
-            return [Part(root=TextPart(text=text))]
+            return [Part(text=text)]
 
         parts: list[Part] = []
 
-        # Extract text content
         text = self._extract_text_from_item(output)
         if text:
-            parts.append(Part(root=TextPart(text=text)))
+            parts.append(Part(text=text))
 
-        # Extract files (if n8n returns them)
         if self.file_field in output:
             for file_ref in output[self.file_field]:
                 if isinstance(file_ref, dict):
                     parts.append(
                         Part(
-                            root=FilePart(
-                                file=FileWithUri(
-                                    uri=file_ref.get("url") or file_ref.get("uri"),
-                                    name=file_ref.get("name"),
-                                    mimeType=file_ref.get("mime_type")
-                                    or file_ref.get("mimeType"),
-                                )
-                            )
+                            url=file_ref.get("url") or file_ref.get("uri"),
+                            filename=file_ref.get("name"),
+                            media_type=file_ref.get("mime_type")
+                            or file_ref.get("mimeType"),
                         )
                     )
 
-        # Extract images (if n8n returns them)
         if self.image_field in output:
             for img_ref in output[self.image_field]:
                 if isinstance(img_ref, dict):
                     parts.append(
                         Part(
-                            root=FilePart(
-                                file=FileWithUri(
-                                    uri=img_ref.get("url") or img_ref.get("uri"),
-                                    name=img_ref.get("name"),
-                                    mimeType=img_ref.get("mime_type")
-                                    or img_ref.get("mimeType", "image/png"),
-                                )
-                            )
+                            url=img_ref.get("url") or img_ref.get("uri"),
+                            filename=img_ref.get("name"),
+                            media_type=img_ref.get("mime_type")
+                            or img_ref.get("mimeType", "image/png"),
                         )
                     )
 
         if not parts:
-            return [Part(root=TextPart(text="[Empty response]"))]
+            return [Part(text="[Empty response]")]
         return parts
 
 
@@ -662,10 +638,10 @@ class N8nAgentAdapter(BaseAgentAdapter):
                 return result.status.message
             # Fallback: create a message from task
             return Message(
-                role=Role.agent,
+                role=Role.ROLE_AGENT,
                 message_id=str(uuid.uuid4()),
                 context_id=result.context_id,
-                parts=[Part(root=TextPart(text="Task completed"))],
+                parts=[Part(text="Task completed")],
             )
         return result
 
@@ -693,7 +669,7 @@ class N8nAgentAdapter(BaseAgentAdapter):
             id=task_id,
             context_id=context_id,
             status=TaskStatus(
-                state=TaskState.working,
+                state=TaskState.TASK_STATE_WORKING,
                 timestamp=now,
             ),
             history=[initial_message] if initial_message else None,
@@ -752,17 +728,17 @@ class N8nAgentAdapter(BaseAgentAdapter):
             logger.error("Task %s timed out after %s seconds", task_id, self.async_timeout)
             now = datetime.now(timezone.utc).isoformat()
             error_message = Message(
-                role=Role.agent,
+                role=Role.ROLE_AGENT,
                 message_id=str(uuid.uuid4()),
                 context_id=context_id,
-                parts=[Part(root=TextPart(text=f"Workflow timed out after {self.async_timeout} seconds"))],
+                parts=[Part(text=f"Workflow timed out after {self.async_timeout} seconds")],
             )
             
             timeout_task = Task(
                 id=task_id,
                 context_id=context_id,
                 status=TaskStatus(
-                    state=TaskState.failed,
+                    state=TaskState.TASK_STATE_FAILED,
                     message=error_message,
                     timestamp=now,
                 ),
@@ -795,12 +771,12 @@ class N8nAgentAdapter(BaseAgentAdapter):
             # Convert to message
             response_text = self._extract_response_text(framework_output)
             response_message = Message(
-                role=Role.agent,
+                role=Role.ROLE_AGENT,
                 message_id=str(uuid.uuid4()),
                 context_id=context_id,
-                parts=[Part(root=TextPart(text=response_text))],
+                parts=[Part(text=response_text)],
             )
-            
+
             # Build history
             history = []
             if hasattr(params, "message") and params.message:
@@ -813,7 +789,7 @@ class N8nAgentAdapter(BaseAgentAdapter):
                 id=task_id,
                 context_id=context_id,
                 status=TaskStatus(
-                    state=TaskState.completed,
+                    state=TaskState.TASK_STATE_COMPLETED,
                     message=response_message,
                     timestamp=now,
                 ),
@@ -822,7 +798,7 @@ class N8nAgentAdapter(BaseAgentAdapter):
                     Artifact(
                         artifact_id=str(uuid.uuid4()),
                         name="response",
-                        parts=[Part(root=TextPart(text=response_text))],
+                        parts=[Part(text=response_text)],
                     )
                 ],
             )
@@ -845,17 +821,17 @@ class N8nAgentAdapter(BaseAgentAdapter):
             logger.error("Task %s failed: %s", task_id, e)
             now = datetime.now(timezone.utc).isoformat()
             error_message = Message(
-                role=Role.agent,
+                role=Role.ROLE_AGENT,
                 message_id=str(uuid.uuid4()),
                 context_id=context_id,
-                parts=[Part(root=TextPart(text=f"Workflow failed: {str(e)}"))],
+                parts=[Part(text=f"Workflow failed: {str(e)}")],
             )
             
             failed_task = Task(
                 id=task_id,
                 context_id=context_id,
                 status=TaskStatus(
-                    state=TaskState.failed,
+                    state=TaskState.TASK_STATE_FAILED,
                     message=error_message,
                     timestamp=now,
                 ),
@@ -1063,10 +1039,10 @@ class N8nAgentAdapter(BaseAgentAdapter):
         context_id = self.extract_context_id(params)
 
         return Message(
-            role=Role.agent,
+            role=Role.ROLE_AGENT,
             message_id=str(uuid.uuid4()),
             context_id=context_id,
-            parts=[Part(root=TextPart(text=response_text))],
+            parts=[Part(text=response_text)],
         )
 
     def _extract_text_from_item(self, item: Dict[str, Any]) -> str:
@@ -1162,11 +1138,11 @@ class N8nAgentAdapter(BaseAgentAdapter):
             return False
         
         # Only allow deletion of tasks in terminal states
-        terminal_states = {TaskState.completed, TaskState.failed, TaskState.canceled}
+        terminal_states = {TaskState.TASK_STATE_COMPLETED, TaskState.TASK_STATE_FAILED, TaskState.TASK_STATE_CANCELED}
         if task.status.state not in terminal_states:
             raise ValueError(
                 f"Cannot delete task {task_id} with state={task.status.state}. "
-                f"Only tasks in terminal states ({', '.join(s.value for s in terminal_states)}) can be deleted."
+                f"Only tasks in terminal states (completed, failed, canceled) can be deleted."
             )
         
         await self.task_store.delete(task_id)
@@ -1216,7 +1192,7 @@ class N8nAgentAdapter(BaseAgentAdapter):
                 id=task_id,
                 context_id=task.context_id,
                 status=TaskStatus(
-                    state=TaskState.canceled,
+                    state=TaskState.TASK_STATE_CANCELED,
                     timestamp=now,
                 ),
                 history=task.history,
