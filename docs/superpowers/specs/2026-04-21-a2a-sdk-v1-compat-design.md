@@ -51,7 +51,7 @@ Already V1.0 compatible. All imports resolve.
 
 **Solution:** Add `from __future__ import annotations` at the top of each mixed module. This defers annotation evaluation, so `MessageSendParams` in V0.1 method signatures becomes a string literal at class-definition time and won't trigger an `ImportError`.
 
-**Important distinction:** Only the truly removed types need deferred/aliased imports. Types that still exist in V1.0 (`Message`, `Role`, `Task`, `TaskState`, `TaskStatus`, `Part`) should remain as normal top-level imports — they work fine in V1.0 and are actively used at runtime by V0.1 class bodies (e.g., `Role.ROLE_AGENT` in crewai.py:370, `TaskState.TASK_STATE_WORKING` in langgraph.py:469, `Message(...)` in n8n.py:665). Wrapping them in try/except -> None would silently hide real import errors and produce confusing runtime failures.
+**Important distinction:** Only the truly removed types need deferred/aliased imports. Types that still exist in V1.0 (`Message`, `Role`, `Task`, `TaskState`, `TaskStatus`, `Part`) should remain as normal top-level imports — they work fine in V1.0 and are actively used at runtime by V0.1 class bodies (e.g., `Role.agent` / `TaskState.working` / `Message(...)` throughout crewai.py, langgraph.py, n8n.py — these will be migrated to V1.0 enum values in Section 3, but the types themselves remain valid imports). Wrapping them in try/except -> None would silently hide real import errors and produce confusing runtime failures.
 
 Pattern for each mixed module:
 ```python
@@ -78,7 +78,7 @@ except ImportError:
 **What gets deferred per module (only truly removed types):**
 - All mixed modules: `TextPart`, `MessageSendParams` (alias for `SendMessageRequest`)
 - n8n.py additionally: `FilePart`, `FileWithUri`, `FileWithBytes`
-- openclaw.py additionally: `PushNotificationConfig` (now `TaskPushNotificationConfig`)
+- openclaw.py additionally: `FilePart`, `FileWithUri`, `PushNotificationConfig` (now `TaskPushNotificationConfig`) — openclaw.py currently imports `FilePart` and `FileWithUri` at module level (line 24); these must also be deferred or removed to unblock module loading
 
 **Files:**
 - `integrations/crewai.py` (lines 24-33)
