@@ -366,9 +366,10 @@ class TestOpenClawAdapterFromFramework:
         
         result = await adapter.from_framework(framework_output, params)
 
-        assert isinstance(result, Message)
-        assert len(result.parts) == 1
-        assert result.parts[0].text == ""
+        assert isinstance(result, Task)
+        assert result.status.state == TaskState.TASK_STATE_COMPLETED
+        assert result.status.message is not None
+        assert "without visible output" in result.status.message.parts[0].text.lower()
 
 
 class TestOpenClawAdapterMimeTypeDetection:
@@ -541,6 +542,35 @@ class TestOpenClawAdapterAsyncExecution:
             assert len(completed_task.artifacts) == 1
             assert "command result" in completed_task.artifacts[0].parts[0].text
             
+            await adapter.close()
+
+    @pytest.mark.asyncio
+    async def test_async_empty_payload_sets_completed_status_message(self):
+        """Empty payloads should complete with a diagnostic status message."""
+        adapter = OpenClawAgentAdapter(async_mode=True)
+
+        async def mock_create_subprocess(*args, **kwargs):
+            proc = MagicMock()
+            proc.returncode = 0
+
+            async def communicate():
+                return (json.dumps({"payloads": [], "meta": {"stopReason": "end_turn"}}).encode(), b"")
+
+            proc.communicate = communicate
+            return proc
+
+        with patch("asyncio.create_subprocess_exec", mock_create_subprocess):
+            params = make_message_send_params("test message")
+            task = await adapter.handle(params)
+            await asyncio.sleep(0.1)
+            completed_task = await adapter.get_task(task.id)
+
+            assert completed_task is not None
+            assert completed_task.status.state == TaskState.TASK_STATE_COMPLETED
+            assert completed_task.status.message is not None
+            assert "stop reason: end_turn" in completed_task.status.message.parts[0].text
+            assert completed_task.artifacts == []
+
             await adapter.close()
 
     @pytest.mark.asyncio
