@@ -63,12 +63,14 @@ from ..base_adapter import AdapterMetadata, BaseA2AAdapter
 # Lazy import for TaskStore to avoid hard dependency
 try:
     from a2a.server.tasks import InMemoryTaskStore, TaskStore
+    from a2a.server.context import ServerCallContext
 
     _HAS_TASK_STORE = True
 except ImportError:
     _HAS_TASK_STORE = False
     TaskStore = None  # type: ignore
     InMemoryTaskStore = None  # type: ignore
+    ServerCallContext = None  # type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -497,6 +499,10 @@ class OpenClawAgentAdapter(BaseAgentAdapter):
         else:
             self.task_store = task_store  # type: ignore
 
+    def _create_minimal_context(self) -> "ServerCallContext":
+        """Create a minimal ServerCallContext for task store operations."""
+        return ServerCallContext()
+
     async def handle(self, params: MessageSendParams) -> Message | Task:
         """
         Handle a non-streaming A2A message request.
@@ -559,7 +565,7 @@ class OpenClawAgentAdapter(BaseAgentAdapter):
                 logger.debug("Stored push notification config for task %s: %s", task_id, pn_config.url)
 
         # Create initial task with "working" state
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(timezone.utc)
         task = Task(
             id=task_id,
             context_id=context_id,
@@ -571,7 +577,7 @@ class OpenClawAgentAdapter(BaseAgentAdapter):
         )
 
         # Save initial task state
-        await self.task_store.save(task)
+        await self.task_store.save(task, self._create_minimal_context())
         logger.debug("Created async task %s with state=working", task_id)
 
         # Start background processing with timeout
@@ -649,7 +655,7 @@ class OpenClawAgentAdapter(BaseAgentAdapter):
         deleted_count = 0
         for task_id in expired_task_ids:
             try:
-                await self.task_store.delete(task_id)
+                await self.task_store.delete(task_id, self._create_minimal_context())
                 self._task_completion_times.pop(task_id, None)
                 deleted_count += 1
                 logger.debug("Auto-deleted expired task %s", task_id)
@@ -704,7 +710,7 @@ class OpenClawAgentAdapter(BaseAgentAdapter):
                 return
 
             logger.error("Task %s timed out after %s seconds", task_id, self.timeout)
-            now = datetime.now(timezone.utc).isoformat()
+            now = datetime.now(timezone.utc)
             error_message = Message(
                 role=Role.ROLE_AGENT,
                 message_id=str(uuid.uuid4()),
@@ -725,7 +731,7 @@ class OpenClawAgentAdapter(BaseAgentAdapter):
                     timestamp=now,
                 ),
             )
-            await self.task_store.save(timeout_task)
+            await self.task_store.save(timeout_task, self._create_minimal_context())
 
             # Record completion time for TTL cleanup
             self._record_task_completion(task_id)
@@ -774,7 +780,7 @@ class OpenClawAgentAdapter(BaseAgentAdapter):
             response_artifact = self._create_response_artifact(framework_output)
 
             # Update task to completed state
-            now = datetime.now(timezone.utc).isoformat()
+            now = datetime.now(timezone.utc)
             completed_task = Task(
                 id=task_id,
                 context_id=context_id,
@@ -786,7 +792,7 @@ class OpenClawAgentAdapter(BaseAgentAdapter):
                 history=history,
             )
 
-            await self.task_store.save(completed_task)
+            await self.task_store.save(completed_task, self._create_minimal_context())
             logger.debug("Task %s completed successfully", task_id)
 
             # Record completion time for TTL cleanup
@@ -808,7 +814,7 @@ class OpenClawAgentAdapter(BaseAgentAdapter):
 
             # Update task to failed state
             logger.error("Task %s failed: %s", task_id, e)
-            now = datetime.now(timezone.utc).isoformat()
+            now = datetime.now(timezone.utc)
             error_message = Message(
                 role=Role.ROLE_AGENT,
                 message_id=str(uuid.uuid4()),
@@ -826,7 +832,7 @@ class OpenClawAgentAdapter(BaseAgentAdapter):
                 ),
             )
 
-            await self.task_store.save(failed_task)
+            await self.task_store.save(failed_task, self._create_minimal_context())
 
             # Record completion time for TTL cleanup
             self._record_task_completion(task_id)
@@ -1345,7 +1351,7 @@ class OpenClawAgentAdapter(BaseAgentAdapter):
                 "Initialize adapter with async_mode=True"
             )
 
-        task = await self.task_store.get(task_id)
+        task = await self.task_store.get(task_id, self._create_minimal_context())
         if not task:
             return False
 
@@ -1410,7 +1416,7 @@ class OpenClawAgentAdapter(BaseAgentAdapter):
                 "Initialize adapter with async_mode=True"
             )
 
-        task = await self.task_store.get(task_id)
+        task = await self.task_store.get(task_id, self._create_minimal_context())
         if task:
             logger.debug("Retrieved task %s with state=%s", task_id, task.status.state)
         else:
@@ -1441,7 +1447,7 @@ class OpenClawAgentAdapter(BaseAgentAdapter):
                 "Initialize adapter with async_mode=True"
             )
 
-        task = await self.task_store.get(task_id)
+        task = await self.task_store.get(task_id, self._create_minimal_context())
         if not task:
             return False
 
@@ -1453,7 +1459,7 @@ class OpenClawAgentAdapter(BaseAgentAdapter):
                 f"Only tasks in terminal states can be deleted."
             )
 
-        await self.task_store.delete(task_id)
+        await self.task_store.delete(task_id, self._create_minimal_context())
         logger.debug("Deleted task %s", task_id)
         return True
 
@@ -1503,9 +1509,9 @@ class OpenClawAgentAdapter(BaseAgentAdapter):
                 pass  # Task may have failed, we're cancelling anyway
 
         # Update task state to canceled
-        task = await self.task_store.get(task_id)
+        task = await self.task_store.get(task_id, self._create_minimal_context())
         if task:
-            now = datetime.now(timezone.utc).isoformat()
+            now = datetime.now(timezone.utc)
             canceled_task = Task(
                 id=task_id,
                 context_id=task.context_id,
@@ -1515,7 +1521,7 @@ class OpenClawAgentAdapter(BaseAgentAdapter):
                 ),
                 history=task.history,
             )
-            await self.task_store.save(canceled_task)
+            await self.task_store.save(canceled_task, self._create_minimal_context())
             logger.debug("Task %s marked as canceled", task_id)
 
             # Record completion time for TTL cleanup
