@@ -49,30 +49,36 @@ Already V1.0 compatible. All imports resolve.
 
 **Problem:** These files have V0.2 and V0.1 classes in the same module. Module-level imports pull in `TextPart`, `MessageSendParams`, `Role`, etc. for V0.1 classes, which prevents the V0.2 class from loading at all.
 
-**Solution:** Add `from __future__ import annotations` at the top of each mixed module. This defers annotation evaluation, so `MessageSendParams` in V0.1 method signatures becomes a string literal at class-definition time and won't trigger an `ImportError`. Then move the removed types (`TextPart`, `MessageSendParams`, `Role`, `TaskState`, `TaskStatus`, `Message`, `Task`) out of the module-level import and into a conditional block that's evaluated at V0.1 class call time only.
+**Solution:** Add `from __future__ import annotations` at the top of each mixed module. This defers annotation evaluation, so `MessageSendParams` in V0.1 method signatures becomes a string literal at class-definition time and won't trigger an `ImportError`.
+
+**Important distinction:** Only the truly removed types need deferred/aliased imports. Types that still exist in V1.0 (`Message`, `Role`, `Task`, `TaskState`, `TaskStatus`, `Part`) should remain as normal top-level imports — they work fine in V1.0 and are actively used at runtime by V0.1 class bodies (e.g., `Role.ROLE_AGENT` in crewai.py:370, `TaskState.TASK_STATE_WORKING` in langgraph.py:469, `Message(...)` in n8n.py:665). Wrapping them in try/except -> None would silently hide real import errors and produce confusing runtime failures.
 
 Pattern for each mixed module:
 ```python
 from __future__ import annotations  # NEW: defer annotation evaluation
 
-# V1.0-safe imports (used by V0.2 adapter)
-from a2a.types import Part
+# V1.0-safe imports — these types exist in both V0.x and V1.0
+from a2a.types import (
+    Message, Part, Role, Task, TaskState, TaskStatus,
+)
 
-# V0.1-only imports — deferred to avoid ImportError at module load.
-# These types are removed in a2a-sdk V1.0; they're only needed when
-# V0.1 classes are actually instantiated, not at module parse time.
+# Truly removed types — only needed by V0.1 class signatures/bodies.
+# Aliased or stubbed so the module loads even if V0.1 types are gone.
 try:
-    from a2a.types import (
-        Message, SendMessageRequest as MessageSendParams,
-        Role, Task, TaskState, TaskStatus,
-    )
+    from a2a.types import SendMessageRequest as MessageSendParams
 except ImportError:
-    Message = None  # type: ignore
     MessageSendParams = None  # type: ignore
-    # ... etc.
+
+# Per-module: also defer TextPart, FilePart, FileWithUri, FileWithBytes,
+# PushNotificationConfig if the V0.1 class body uses them.
 ```
 
-**Note on `from __future__ import annotations`:** This is necessary because the V0.1 class method signatures use `MessageSendParams`, `Message`, `Task` as type annotations. Without postponed evaluation, Python evaluates these at class definition time, which crashes before any code runs. `from __future__ import annotations` makes all annotations strings by default, so the module loads cleanly. The renamed/aliased imports (`SendMessageRequest as MessageSendParams`) then only need to resolve when V0.1 code is actually called.
+**Note on `from __future__ import annotations`:** This is necessary because the V0.1 class method signatures use `MessageSendParams` as a type annotation. Without postponed evaluation, Python evaluates these at class definition time, which crashes before any code runs. `from __future__ import annotations` makes all annotations strings by default, so the module loads cleanly. The aliased import (`SendMessageRequest as MessageSendParams`) then only needs to resolve when V0.1 code is actually called.
+
+**What gets deferred per module (only truly removed types):**
+- All mixed modules: `TextPart`, `MessageSendParams` (alias for `SendMessageRequest`)
+- n8n.py additionally: `FilePart`, `FileWithUri`, `FileWithBytes`
+- openclaw.py additionally: `PushNotificationConfig` (now `TaskPushNotificationConfig`)
 
 **Files:**
 - `integrations/crewai.py` (lines 24-33)
@@ -170,6 +176,9 @@ For each V0.1 class body, update:
 - `Part(root=TextPart(text="multi"))` -> `Part(text="multi")` (line 110)
 - `result[0].root.text` -> `result[0].text` (line 119)
 
+**`tests/test_callable.py`:**
+- Remove `TextPart` import (line 4) — `TextPart` is imported but unused in test body; removing it unblocks test collection
+
 **`tests/test_executor.py`:**
 - Remove `TextPart` import (line 11)
 - All `Part(root=TextPart(text="..."))` -> `Part(text="...")` throughout
@@ -213,6 +222,13 @@ Every V0.1 unit test file is built on the removed types. Each needs a full migra
 **`tests/integration/test_a2a_compatibility.py`:**
 - Full rewrite: `MessageSendParams` -> `SendMessageRequest`, Part construction, Role values, TextPart assertions
 
+### Group D: Loader tests
+
+**`tests/unit/test_loader.py`:**
+- Line 6: `from a2a_adapter.loader import load_a2a_agent` — import itself is fine (loader uses lazy importlib)
+- Line 7: `from a2a_adapter.integrations.callable import CallableAgentAdapter` — triggers module-level import of removed types. This will fail at test collection unless the callable module's import restructure (Section 2) is done first.
+- No type-level changes needed in the test body itself — it only constructs adapters via `load_a2a_agent()` config dicts. The fix is upstream (Section 2's callable.py import restructure unblocks this file automatically).
+
 ## Section 5: Version & Packaging
 
 **Fix version drift:**
@@ -233,4 +249,4 @@ Every V0.1 unit test file is built on the removed types. Each needs a full migra
 5. All V0.2 adapter `invoke()` / `stream()` work end-to-end
 6. N8n multimodal mode works with V1.0 Part proto fields
 7. `uv run pytest` passes all tests
-8. No `TextPart`, `FilePart`, `FileWithUri`, `FileWithBytes`, `MessageSendParams` appear in any non-test, non-deprecated code path
+8. V0.2 import paths and runtime paths have no dependency on removed types — i.e., importing and calling any V0.2 adapter class (`N8nAdapter`, `CrewAIAdapter`, etc.) never evaluates `TextPart`, `FilePart`, `FileWithUri`, `FileWithBytes`, or the pre-alias `MessageSendParams`. Legacy aliases in V0.1 deprecated classes (e.g., `SendMessageRequest as MessageSendParams`) are acceptable and expected.
