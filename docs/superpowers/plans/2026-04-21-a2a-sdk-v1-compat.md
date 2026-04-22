@@ -42,8 +42,8 @@
 - `tests/unit/test_openclaw_adapter.py` — full V0.1 test migration
 - `tests/integration/test_a2a_compatibility.py` — full migration
 
-### No changes needed:
-- `a2a_adapter/executor.py` — already V1.0 clean
+### No code changes needed (docstring cleanup only):
+- `a2a_adapter/executor.py` — runtime code already V1.0 clean; docstring on line 162 mentions "TextPart, FilePart" — cleaned up in Task 2
 - `a2a_adapter/server.py` — already V1.0 clean
 - `a2a_adapter/loader.py` — uses lazy importlib, no changes needed
 - `a2a_adapter/integrations/ollama.py` — no A2A type imports
@@ -259,17 +259,44 @@ with:
                            media_type="image/png")
 ```
 
-- [ ] **Step 5: Verify imports**
+- [ ] **Step 5: Clean up executor.py docstring**
+
+In `a2a_adapter/executor.py`, line 162, replace:
+```python
+        """Extract text content from multimodal parts for completion message.
+
+        Args:
+            parts: List of Part objects (may contain TextPart, FilePart, etc.)
+
+        Returns:
+            Concatenated text from all TextPart objects, or a placeholder
+            if no text parts are found.
+        """
+```
+with:
+```python
+        """Extract text content from multimodal parts for completion message.
+
+        Args:
+            parts: List of Part objects (may contain text, file, or data parts).
+
+        Returns:
+            Concatenated text from all text parts, or a placeholder
+            if no text parts are found.
+        """
+```
+
+- [ ] **Step 6: Verify imports**
 
 Run: `uv run python -c "from a2a_adapter.adapter import BaseAgentAdapter; print('adapter.py OK')"`
 Run: `uv run python -c "from a2a_adapter.client import build_agent_app; print('client.py OK')"`
 Expected: Both print OK (client.py may print OK via the stub that raises on call, or via the original if SDK happens to have the old types).
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add a2a_adapter/adapter.py a2a_adapter/client.py a2a_adapter/base_adapter.py
-git commit -m "fix: V1.0 compat for core infrastructure (adapter.py, client.py, base_adapter.py)"
+git add a2a_adapter/adapter.py a2a_adapter/client.py a2a_adapter/base_adapter.py a2a_adapter/executor.py
+git commit -m "fix: V1.0 compat for core infrastructure (adapter.py, client.py, base_adapter.py, executor.py docstring)"
 ```
 
 ---
@@ -884,6 +911,7 @@ class TestBuildMultimodalPayload:
 
         mock_client = AsyncMock()
         mock_client.get = AsyncMock(return_value=mock_resp)
+        mock_client.is_closed = False
         adapter._client = mock_client
 
         payload = await adapter._build_multimodal_payload("check this", "ctx-1", ctx)
@@ -906,6 +934,7 @@ class TestBuildMultimodalPayload:
 
         mock_client = AsyncMock()
         mock_client.get = AsyncMock(return_value=mock_resp)
+        mock_client.is_closed = False
         adapter._client = mock_client
 
         payload = await adapter._build_multimodal_payload("look at this", "ctx-1", ctx)
@@ -938,6 +967,7 @@ class TestFetchFileContent:
         mock_resp.raise_for_status = MagicMock()
         mock_client = AsyncMock()
         mock_client.get = AsyncMock(return_value=mock_resp)
+        mock_client.is_closed = False
         adapter._client = mock_client
 
         result = await adapter._fetch_file_content(part)
