@@ -4,16 +4,16 @@ Unit tests for CallableAgentAdapter.
 
 import pytest
 from a2a_adapter.integrations.callable import CallableAgentAdapter
-from a2a.types import Message, MessageSendParams, TextPart, Role, Part
+from a2a.types import Message, SendMessageRequest, Role, Part
 
 
-def make_message_send_params(text: str, context_id: str | None = None) -> MessageSendParams:
-    """Helper to create MessageSendParams with correct A2A types."""
-    return MessageSendParams(
+def make_message_send_params(text: str, context_id: str | None = None) -> SendMessageRequest:
+    """Helper to create SendMessageRequest with correct A2A types."""
+    return SendMessageRequest(
         message=Message(
             message_id="test-msg-id",
-            role=Role.user,
-            parts=[Part(root=TextPart(text=text))],
+            role=Role.ROLE_USER,
+            parts=[Part(text=text)],
             context_id=context_id,
         )
     )
@@ -39,8 +39,8 @@ async def test_callable_adapter_string_response():
     result = await adapter.handle(params)
     
     assert isinstance(result, Message)
-    assert result.role == Role.agent
-    assert "Echo: hello" in result.parts[0].root.text
+    assert result.role == Role.ROLE_AGENT
+    assert "Echo: hello" in result.parts[0].text
 
 
 @pytest.mark.asyncio
@@ -53,7 +53,7 @@ async def test_callable_adapter_dict_response():
     result = await adapter.handle(params)
     
     assert isinstance(result, Message)
-    assert "Processed: test" in result.parts[0].root.text
+    assert "Processed: test" in result.parts[0].text
 
 
 def test_callable_adapter_no_streaming_by_default():

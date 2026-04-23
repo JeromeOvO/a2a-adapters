@@ -8,17 +8,17 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from a2a_adapter.integrations.openclaw import OpenClawAgentAdapter, VALID_THINKING_LEVELS
-from a2a.types import Message, MessageSendParams, Task, TaskState, TextPart, Role, Part
+from a2a.types import Message, SendMessageRequest, Task, TaskState, Role, Part
 from a2a.server.tasks import InMemoryTaskStore
 
 
-def make_message_send_params(text: str, context_id: str | None = None) -> MessageSendParams:
-    """Helper to create MessageSendParams with correct A2A types."""
-    return MessageSendParams(
+def make_message_send_params(text: str, context_id: str | None = None) -> SendMessageRequest:
+    """Helper to create SendMessageRequest with correct A2A types."""
+    return SendMessageRequest(
         message=Message(
             message_id="test-msg-id",
-            role=Role.user,
-            parts=[Part(root=TextPart(text=text))],
+            role=Role.ROLE_USER,
+            parts=[Part(text=text)],
             context_id=context_id,
         )
     )
@@ -130,20 +130,20 @@ class TestOpenClawAdapterToFramework:
     async def test_handles_multiple_text_parts(self):
         """Test that multiple text parts are joined correctly."""
         adapter = OpenClawAgentAdapter()
-        
-        params = MessageSendParams(
+
+        params = SendMessageRequest(
             message=Message(
                 message_id="test-msg-id",
-                role=Role.user,
+                role=Role.ROLE_USER,
                 parts=[
-                    Part(root=TextPart(text="part one")),
-                    Part(root=TextPart(text="part two")),
+                    Part(text="part one"),
+                    Part(text="part two"),
                 ],
                 context_id=None,
             )
         )
         payload = await adapter.to_framework(params)
-        
+
         assert "part one" in payload["message"]
         assert "part two" in payload["message"]
 
@@ -331,11 +331,11 @@ class TestOpenClawAdapterFromFramework:
         framework_output = make_openclaw_output("Response text")
         
         result = await adapter.from_framework(framework_output, params)
-        
+
         assert isinstance(result, Message)
-        assert result.role == Role.agent
+        assert result.role == Role.ROLE_AGENT
         assert result.context_id == "ctx-123"
-        assert result.parts[0].root.text == "Response text"
+        assert result.parts[0].text == "Response text"
 
     @pytest.mark.asyncio
     async def test_handles_media_urls(self):
@@ -351,11 +351,10 @@ class TestOpenClawAdapterFromFramework:
         result = await adapter.from_framework(framework_output, params)
 
         assert len(result.parts) == 2
-        assert result.parts[0].root.text == "Response with image"
-        # Second part should be a FilePart
-        assert hasattr(result.parts[1].root, "file")
-        assert result.parts[1].root.file.uri == "https://example.com/image.png"
-        assert result.parts[1].root.file.mime_type == "image/png"
+        assert result.parts[0].text == "Response with image"
+        # Second part should be a URL part
+        assert result.parts[1].url == "https://example.com/image.png"
+        assert result.parts[1].media_type == "image/png"
 
     @pytest.mark.asyncio
     async def test_handles_empty_payloads(self):
@@ -366,11 +365,11 @@ class TestOpenClawAdapterFromFramework:
         framework_output = {"payloads": [], "meta": {}}
         
         result = await adapter.from_framework(framework_output, params)
-        
+
         assert isinstance(result, Task)
-        assert result.status.state == TaskState.completed
+        assert result.status.state == TaskState.TASK_STATE_COMPLETED
         assert result.status.message is not None
-        assert "without visible output" in result.status.message.parts[0].root.text.lower()
+        assert "without visible output" in result.status.message.parts[0].text.lower()
 
 
 class TestOpenClawAdapterMimeTypeDetection:
@@ -498,7 +497,7 @@ class TestOpenClawAdapterAsyncExecution:
             
             # Verify we got a Task back
             assert isinstance(result, Task)
-            assert result.status.state == TaskState.working
+            assert result.status.state == TaskState.TASK_STATE_WORKING
             assert result.context_id == "async-ctx"
             
             # Clean up
@@ -535,13 +534,13 @@ class TestOpenClawAdapterAsyncExecution:
             
             # Poll for completed task
             completed_task = await adapter.get_task(task_id)
-            
+
             assert completed_task is not None
-            assert completed_task.status.state == TaskState.completed
+            assert completed_task.status.state == TaskState.TASK_STATE_COMPLETED
             # Response is in artifacts (A2A spec: task outputs go in artifacts)
             assert completed_task.artifacts is not None
             assert len(completed_task.artifacts) == 1
-            assert "command result" in completed_task.artifacts[0].parts[0].root.text
+            assert "command result" in completed_task.artifacts[0].parts[0].text
             
             await adapter.close()
 
@@ -567,9 +566,9 @@ class TestOpenClawAdapterAsyncExecution:
             completed_task = await adapter.get_task(task.id)
 
             assert completed_task is not None
-            assert completed_task.status.state == TaskState.completed
+            assert completed_task.status.state == TaskState.TASK_STATE_COMPLETED
             assert completed_task.status.message is not None
-            assert "stop reason: end_turn" in completed_task.status.message.parts[0].root.text
+            assert "stop reason: end_turn" in completed_task.status.message.parts[0].text
             assert completed_task.artifacts == []
 
             await adapter.close()
@@ -602,11 +601,11 @@ class TestOpenClawAdapterAsyncExecution:
             
             # Poll for failed task
             failed_task = await adapter.get_task(task_id)
-            
+
             assert failed_task is not None
-            assert failed_task.status.state == TaskState.failed
+            assert failed_task.status.state == TaskState.TASK_STATE_FAILED
             assert failed_task.status.message is not None
-            assert "failed" in failed_task.status.message.parts[0].root.text.lower()
+            assert "failed" in failed_task.status.message.parts[0].text.lower()
             
             await adapter.close()
 
@@ -638,9 +637,9 @@ class TestOpenClawAdapterAsyncExecution:
             
             # Cancel the task
             canceled_task = await adapter.cancel_task(task_id)
-            
+
             assert canceled_task is not None
-            assert canceled_task.status.state == TaskState.canceled
+            assert canceled_task.status.state == TaskState.TASK_STATE_CANCELED
             
             await adapter.close()
 
@@ -668,18 +667,18 @@ class TestOpenClawAdapterAsyncExecution:
             # Initial task should have the user message in history
             assert task.history is not None
             assert len(task.history) == 1
-            assert task.history[0].role == Role.user
-            
+            assert task.history[0].role == Role.ROLE_USER
+
             # Wait for completion
             await asyncio.sleep(0.1)
-            
+
             completed_task = await adapter.get_task(task.id)
-            
+
             # Completed task should have both user and agent messages
             assert completed_task.history is not None
             assert len(completed_task.history) == 2
-            assert completed_task.history[0].role == Role.user
-            assert completed_task.history[1].role == Role.agent
+            assert completed_task.history[0].role == Role.ROLE_USER
+            assert completed_task.history[1].role == Role.ROLE_AGENT
             
             await adapter.close()
 
@@ -717,10 +716,10 @@ class TestOpenClawAdapterAsyncExecution:
             
             # Task should be failed due to timeout
             timed_out_task = await adapter.get_task(task_id)
-            
+
             assert timed_out_task is not None
-            assert timed_out_task.status.state == TaskState.failed
-            assert "timed out" in timed_out_task.status.message.parts[0].root.text.lower()
+            assert timed_out_task.status.state == TaskState.TASK_STATE_FAILED
+            assert "timed out" in timed_out_task.status.message.parts[0].text.lower()
             
             await adapter.close()
 
@@ -754,7 +753,7 @@ class TestOpenClawAdapterDeleteTask:
             
             # Verify task is completed
             completed_task = await adapter.get_task(task_id)
-            assert completed_task.status.state == TaskState.completed
+            assert completed_task.status.state == TaskState.TASK_STATE_COMPLETED
             
             # Delete the task
             result = await adapter.delete_task(task_id)
@@ -1033,12 +1032,12 @@ class TestOpenClawAdapterSyncMode:
             params = make_message_send_params("test message", context_id="sync-ctx")
             
             result = await adapter.handle(params)
-            
+
             # Should return Message, not Task
             assert isinstance(result, Message)
-            assert result.role == Role.agent
+            assert result.role == Role.ROLE_AGENT
             assert result.context_id == "sync-ctx"
-            assert "sync response" in result.parts[0].root.text
+            assert "sync response" in result.parts[0].text
 
 
 class TestOpenClawAdapterLifecycle:

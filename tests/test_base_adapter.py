@@ -3,7 +3,7 @@
 from typing import AsyncIterator
 
 import pytest
-from a2a.types import Part, TextPart
+from a2a.types import Part
 
 from a2a_adapter.base_adapter import AdapterMetadata, BaseA2AAdapter
 
@@ -107,7 +107,7 @@ class TestBaseA2AAdapterContract:
 
 class MultimodalAdapter(BaseA2AAdapter):
     async def invoke(self, user_input, context_id=None, **kwargs):
-        return [Part(root=TextPart(text="multi"))]
+        return [Part(text="multi")]
 
 
 class TestMultimodalInvoke:
@@ -116,4 +116,4 @@ class TestMultimodalInvoke:
         result = await adapter.invoke("hi")
         assert isinstance(result, list)
         assert len(result) == 1
-        assert result[0].root.text == "multi"
+        assert result[0].text == "multi"

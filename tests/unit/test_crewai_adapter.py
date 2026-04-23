@@ -8,33 +8,33 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from a2a_adapter.integrations.crewai import CrewAIAgentAdapter
-from a2a.types import Message, MessageSendParams, Task, TaskState, TextPart, Role, Part
+from a2a.types import Message, SendMessageRequest, Task, TaskState, Role, Part
 from a2a.server.tasks import InMemoryTaskStore
 
 
-def make_message_send_params(text: str, context_id: str | None = None) -> MessageSendParams:
-    """Helper to create MessageSendParams with correct A2A types."""
-    return MessageSendParams(
+def make_message_send_params(text: str, context_id: str | None = None) -> SendMessageRequest:
+    """Helper to create SendMessageRequest with correct A2A types."""
+    return SendMessageRequest(
         message=Message(
             message_id="test-msg-id",
-            role=Role.user,
-            parts=[Part(root=TextPart(text=text))],
+            role=Role.ROLE_USER,
+            parts=[Part(text=text)],
             context_id=context_id,
         )
     )
 
 
-def make_message_send_params_with_dict_text(data: dict, context_id: str | None = None) -> MessageSendParams:
-    """Helper to create MessageSendParams where text is a dict (edge case)."""
-    # Create a mock Part where root.text returns a dict
+def make_message_send_params_with_dict_text(data: dict, context_id: str | None = None) -> SendMessageRequest:
+    """Helper to create SendMessageRequest where text is a dict (edge case)."""
+    # Create a mock Part where text returns a dict
     mock_part = MagicMock()
-    mock_part.root.text = data  # This is the edge case: text is dict, not str
+    mock_part.text = data  # This is the edge case: text is dict, not str
 
     mock_message = MagicMock()
     mock_message.parts = [mock_part]
     mock_message.context_id = context_id
 
-    params = MagicMock(spec=MessageSendParams)
+    params = MagicMock(spec=SendMessageRequest)
     params.message = mock_message
     return params
 
@@ -74,13 +74,13 @@ class TestCrewAIAdapterBasic:
         adapter = CrewAIAgentAdapter(crew=mock_crew, parse_json_input=False)
 
         # Create params with multiple text parts
-        params = MessageSendParams(
+        params = SendMessageRequest(
             message=Message(
                 message_id="test-msg-id",
-                role=Role.user,
+                role=Role.ROLE_USER,
                 parts=[
-                    Part(root=TextPart(text="part one")),
-                    Part(root=TextPart(text="part two")),
+                    Part(text="part one"),
+                    Part(text="part two"),
                 ],
                 context_id=None,
             )
@@ -92,11 +92,11 @@ class TestCrewAIAdapterBasic:
 
 
 class TestCrewAIAdapterDictTextHandling:
-    """Tests for handling dict type in part.root.text (edge case fix)."""
+    """Tests for handling dict type in part.text (edge case fix)."""
 
     @pytest.mark.asyncio
     async def test_to_framework_handles_dict_text(self):
-        """Test that dict type in part.root.text is handled correctly."""
+        """Test that dict type in part.text is handled correctly."""
         mock_crew = MagicMock()
         adapter = CrewAIAgentAdapter(crew=mock_crew)
 
@@ -307,7 +307,7 @@ class TestCrewAIAdapterContextId:
 
         assert isinstance(result, Message)
         assert result.context_id == "ctx-789"
-        assert result.role == Role.agent
+        assert result.role == Role.ROLE_AGENT
 
     @pytest.mark.asyncio
     async def test_from_framework_handles_missing_context_id(self):
@@ -321,7 +321,8 @@ class TestCrewAIAdapterContextId:
         result = await adapter.from_framework(framework_output, params)
 
         assert isinstance(result, Message)
-        assert result.context_id is None
+        # In V1.0, protobuf uses empty string for missing optional fields
+        assert result.context_id in (None, "")
 
 
 class TestCrewAIAdapterOutputExtraction:
@@ -336,7 +337,7 @@ class TestCrewAIAdapterOutputExtraction:
         params = make_message_send_params("hello")
         result = await adapter.from_framework("simple string response", params)
 
-        assert result.parts[0].root.text == "simple string response"
+        assert result.parts[0].text == "simple string response"
 
     @pytest.mark.asyncio
     async def test_from_framework_extracts_crew_output_raw(self):
@@ -351,7 +352,7 @@ class TestCrewAIAdapterOutputExtraction:
         params = make_message_send_params("hello")
         result = await adapter.from_framework(mock_crew_output, params)
 
-        assert result.parts[0].root.text == "raw crew output"
+        assert result.parts[0].text == "raw crew output"
 
     @pytest.mark.asyncio
     async def test_from_framework_extracts_crew_output_result(self):
@@ -366,7 +367,7 @@ class TestCrewAIAdapterOutputExtraction:
         params = make_message_send_params("hello")
         result = await adapter.from_framework(mock_crew_output, params)
 
-        assert result.parts[0].root.text == "result crew output"
+        assert result.parts[0].text == "result crew output"
 
     @pytest.mark.asyncio
     async def test_from_framework_extracts_dict_output(self):
@@ -379,7 +380,7 @@ class TestCrewAIAdapterOutputExtraction:
 
         result = await adapter.from_framework(framework_output, params)
 
-        assert result.parts[0].root.text == "dict output value"
+        assert result.parts[0].text == "dict output value"
 
 
 class TestCrewAIAdapterCallFramework:
@@ -432,9 +433,9 @@ class TestCrewAIAdapterHandle:
         result = await adapter.handle(params)
 
         assert isinstance(result, Message)
-        assert result.role == Role.agent
+        assert result.role == Role.ROLE_AGENT
         assert result.context_id == "e2e-ctx"
-        assert result.parts[0].root.text == "processed response"
+        assert result.parts[0].text == "processed response"
 
 
 class TestCrewAIAdapterAsyncMode:
@@ -491,7 +492,7 @@ class TestCrewAIAdapterAsyncMode:
 
         # Verify we got a Task back
         assert isinstance(result, Task)
-        assert result.status.state == TaskState.working
+        assert result.status.state == TaskState.TASK_STATE_WORKING
         assert result.context_id == "async-ctx"
 
         # Clean up
@@ -517,9 +518,9 @@ class TestCrewAIAdapterAsyncMode:
         completed_task = await adapter.get_task(task_id)
 
         assert completed_task is not None
-        assert completed_task.status.state == TaskState.completed
+        assert completed_task.status.state == TaskState.TASK_STATE_COMPLETED
         assert completed_task.status.message is not None
-        assert "crew result" in completed_task.status.message.parts[0].root.text
+        assert "crew result" in completed_task.status.message.parts[0].text
 
         await adapter.close()
 
@@ -546,7 +547,7 @@ class TestCrewAIAdapterAsyncMode:
         canceled_task = await adapter.cancel_task(task_id)
 
         assert canceled_task is not None
-        assert canceled_task.status.state == TaskState.canceled
+        assert canceled_task.status.state == TaskState.TASK_STATE_CANCELED
 
         await adapter.close()
 
@@ -585,7 +586,7 @@ class TestCrewAIAdapterLegacySupport:
         legacy_message = MagicMock()
         legacy_message.content = "legacy content"
 
-        params = MagicMock(spec=MessageSendParams)
+        params = MagicMock(spec=SendMessageRequest)
         params.message = None
         params.messages = [legacy_message]
 

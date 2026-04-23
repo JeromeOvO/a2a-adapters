@@ -34,7 +34,7 @@ class StreamingStubAdapter(BaseA2AAdapter):
         self, user_input: str, context_id: str | None = None, **kwargs
     ) -> str:
         return "".join(
-            c if isinstance(c, str) else getattr(c.root, "text", "")
+            c if isinstance(c, str) else (c.text or "")
             for c in self._chunks
         )
 

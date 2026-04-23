@@ -14,6 +14,8 @@ Input handling modes (in priority order):
 3. inputs_key: Simple text mapping to a single key (default fallback)
 """
 
+from __future__ import annotations
+
 import asyncio
 import json
 import logging
@@ -23,14 +25,23 @@ from typing import Any, Callable, Dict
 
 from a2a.types import (
     Message,
-    MessageSendParams,
     Part,
     Role,
     Task,
     TaskState,
     TaskStatus,
-    TextPart,
 )
+from a2a.server.context import ServerCallContext
+
+try:
+    from a2a.types import TextPart
+except ImportError:
+    TextPart = None  # type: ignore
+
+try:
+    from a2a.types import SendMessageRequest as MessageSendParams
+except ImportError:
+    MessageSendParams = None  # type: ignore
 
 from ..adapter import BaseAgentAdapter
 from ..base_adapter import AdapterMetadata, BaseA2AAdapter
@@ -318,6 +329,10 @@ class CrewAIAgentAdapter(BaseAgentAdapter):
         else:
             self.task_store = task_store  # type: ignore
 
+    def _create_minimal_context(self) -> ServerCallContext:
+        """Create a minimal ServerCallContext for task store operations."""
+        return ServerCallContext()
+
     async def handle(self, params: MessageSendParams) -> Message | Task:
         """
         Handle a non-streaming A2A message request.
@@ -341,10 +356,10 @@ class CrewAIAgentAdapter(BaseAgentAdapter):
             if result.status and result.status.message:
                 return result.status.message
             return Message(
-                role=Role.agent,
+                role=Role.ROLE_AGENT,
                 message_id=str(uuid.uuid4()),
                 context_id=result.context_id,
-                parts=[Part(root=TextPart(text="Crew completed"))],
+                parts=[Part(text="Crew completed")],
             )
         return result
 
@@ -362,19 +377,19 @@ class CrewAIAgentAdapter(BaseAgentAdapter):
             initial_message = params.message
 
         # Create initial task with "working" state
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(timezone.utc)
         task = Task(
             id=task_id,
             context_id=context_id,
             status=TaskStatus(
-                state=TaskState.working,
+                state=TaskState.TASK_STATE_WORKING,
                 timestamp=now,
             ),
             history=[initial_message] if initial_message else None,
         )
 
         # Save initial task state
-        await self.task_store.save(task)
+        await self.task_store.save(task, self._create_minimal_context())
         logger.debug("Created async task %s with state=working", task_id)
 
         # Start background processing with timeout
@@ -418,24 +433,24 @@ class CrewAIAgentAdapter(BaseAgentAdapter):
                 return
 
             logger.error("Task %s timed out after %s seconds", task_id, self.async_timeout)
-            now = datetime.now(timezone.utc).isoformat()
+            now = datetime.now(timezone.utc)
             error_message = Message(
-                role=Role.agent,
+                role=Role.ROLE_AGENT,
                 message_id=str(uuid.uuid4()),
                 context_id=context_id,
-                parts=[Part(root=TextPart(text=f"Crew timed out after {self.async_timeout} seconds"))],
+                parts=[Part(text=f"Crew timed out after {self.async_timeout} seconds")],
             )
 
             timeout_task = Task(
                 id=task_id,
                 context_id=context_id,
                 status=TaskStatus(
-                    state=TaskState.failed,
+                    state=TaskState.TASK_STATE_FAILED,
                     message=error_message,
                     timestamp=now,
                 ),
             )
-            await self.task_store.save(timeout_task)
+            await self.task_store.save(timeout_task, self._create_minimal_context())
 
     async def _execute_crew_background(
         self,
@@ -459,10 +474,10 @@ class CrewAIAgentAdapter(BaseAgentAdapter):
             # Convert to message
             response_text = self._extract_output_text(framework_output)
             response_message = Message(
-                role=Role.agent,
+                role=Role.ROLE_AGENT,
                 message_id=str(uuid.uuid4()),
                 context_id=context_id,
-                parts=[Part(root=TextPart(text=response_text))],
+                parts=[Part(text=response_text)],
             )
 
             # Build history
@@ -472,19 +487,19 @@ class CrewAIAgentAdapter(BaseAgentAdapter):
             history.append(response_message)
 
             # Update task to completed state
-            now = datetime.now(timezone.utc).isoformat()
+            now = datetime.now(timezone.utc)
             completed_task = Task(
                 id=task_id,
                 context_id=context_id,
                 status=TaskStatus(
-                    state=TaskState.completed,
+                    state=TaskState.TASK_STATE_COMPLETED,
                     message=response_message,
                     timestamp=now,
                 ),
                 history=history,
             )
 
-            await self.task_store.save(completed_task)
+            await self.task_store.save(completed_task, self._create_minimal_context())
             logger.debug("Task %s completed successfully", task_id)
 
         except asyncio.CancelledError:
@@ -497,25 +512,25 @@ class CrewAIAgentAdapter(BaseAgentAdapter):
                 return
 
             logger.error("Task %s failed: %s", task_id, e)
-            now = datetime.now(timezone.utc).isoformat()
+            now = datetime.now(timezone.utc)
             error_message = Message(
-                role=Role.agent,
+                role=Role.ROLE_AGENT,
                 message_id=str(uuid.uuid4()),
                 context_id=context_id,
-                parts=[Part(root=TextPart(text=f"Crew failed: {str(e)}"))],
+                parts=[Part(text=f"Crew failed: {str(e)}")],
             )
 
             failed_task = Task(
                 id=task_id,
                 context_id=context_id,
                 status=TaskStatus(
-                    state=TaskState.failed,
+                    state=TaskState.TASK_STATE_FAILED,
                     message=error_message,
                     timestamp=now,
                 ),
             )
 
-            await self.task_store.save(failed_task)
+            await self.task_store.save(failed_task, self._create_minimal_context())
 
     # ---------- Input mapping ----------
 
@@ -631,10 +646,10 @@ class CrewAIAgentAdapter(BaseAgentAdapter):
         context_id = self.extract_context_id(params)
 
         return Message(
-            role=Role.agent,
+            role=Role.ROLE_AGENT,
             message_id=str(uuid.uuid4()),
             context_id=context_id,
-            parts=[Part(root=TextPart(text=response_text))],
+            parts=[Part(text=response_text)],
         )
 
     def _extract_output_text(self, framework_output: Any) -> str:
@@ -691,7 +706,7 @@ class CrewAIAgentAdapter(BaseAgentAdapter):
                 "Initialize adapter with async_mode=True"
             )
 
-        task = await self.task_store.get(task_id)
+        task = await self.task_store.get(task_id, self._create_minimal_context())
         if task:
             logger.debug("Retrieved task %s with state=%s", task_id, task.status.state)
         else:
@@ -733,19 +748,19 @@ class CrewAIAgentAdapter(BaseAgentAdapter):
                 pass
 
         # Update task state to canceled
-        task = await self.task_store.get(task_id)
+        task = await self.task_store.get(task_id, self._create_minimal_context())
         if task:
-            now = datetime.now(timezone.utc).isoformat()
+            now = datetime.now(timezone.utc)
             canceled_task = Task(
                 id=task_id,
                 context_id=task.context_id,
                 status=TaskStatus(
-                    state=TaskState.canceled,
+                    state=TaskState.TASK_STATE_CANCELED,
                     timestamp=now,
                 ),
                 history=task.history,
             )
-            await self.task_store.save(canceled_task)
+            await self.task_store.save(canceled_task, self._create_minimal_context())
             logger.debug("Task %s marked as canceled", task_id)
             return canceled_task
 

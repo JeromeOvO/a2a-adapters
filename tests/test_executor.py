@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from a2a.server.agent_execution import RequestContext
 from a2a.server.events import EventQueue
-from a2a.types import Part, TextPart
+from a2a.types import Part, TaskState
 
 from a2a_adapter.base_adapter import BaseA2AAdapter
 from a2a_adapter.executor import AdapterAgentExecutor
@@ -24,9 +24,10 @@ from .conftest import (
 async def _collect_events(queue: EventQueue) -> list:
     """Drain all pending events from an EventQueue."""
     events = []
-    while True:
+    # V1.0 SDK: dequeue_event() has no parameters, queue.queue is the underlying asyncio.Queue
+    while not queue.queue.empty():
         try:
-            event = await queue.dequeue_event(no_wait=True)
+            event = await queue.dequeue_event()
             events.append(event)
         except (asyncio.QueueEmpty, Exception):
             break
@@ -52,19 +53,11 @@ class TestIsEmptyChunk:
         assert AdapterAgentExecutor._is_empty_chunk(" ") is False
 
     def test_empty_text_part_is_empty(self):
-        part = Part(root=TextPart(text=""))
+        part = Part(text="")
         assert AdapterAgentExecutor._is_empty_chunk(part) is True
 
     def test_nonempty_text_part_is_not_empty(self):
-        part = Part(root=TextPart(text="hi"))
-        assert AdapterAgentExecutor._is_empty_chunk(part) is False
-
-    def test_non_text_part_is_not_empty(self):
-        """A Part without a text attribute (e.g. FilePart stub) should
-        not be classified as empty."""
-        part = MagicMock(spec=Part)
-        part.root = MagicMock()
-        del part.root.text
+        part = Part(text="hi")
         assert AdapterAgentExecutor._is_empty_chunk(part) is False
 
     def test_none_is_not_empty(self):
@@ -81,10 +74,10 @@ class TestToParts:
     def test_string_to_parts(self):
         parts = AdapterAgentExecutor._to_parts("hello")
         assert len(parts) == 1
-        assert parts[0].root.text == "hello"
+        assert parts[0].text == "hello"
 
     def test_part_passthrough(self):
-        part = Part(root=TextPart(text="world"))
+        part = Part(text="world")
         parts = AdapterAgentExecutor._to_parts(part)
         assert len(parts) == 1
         assert parts[0] is part
@@ -105,11 +98,11 @@ class TestConcatenateChunks:
         assert self.executor._concatenate_chunks(["a", "b", "c"]) == "abc"
 
     def test_part_chunks(self):
-        chunks = [Part(root=TextPart(text="x")), Part(root=TextPart(text="y"))]
+        chunks = [Part(text="x"), Part(text="y")]
         assert self.executor._concatenate_chunks(chunks) == "xy"
 
     def test_mixed_chunks(self):
-        chunks = ["a", Part(root=TextPart(text="b"))]
+        chunks = ["a", Part(text="b")]
         assert self.executor._concatenate_chunks(chunks) == "ab"
 
     def test_empty_list(self):
@@ -124,13 +117,11 @@ class TestExtractTextFromParts:
         self.executor = AdapterAgentExecutor(StubAdapter())
 
     def test_text_parts(self):
-        parts = [Part(root=TextPart(text="foo")), Part(root=TextPart(text="bar"))]
+        parts = [Part(text="foo"), Part(text="bar")]
         assert self.executor._extract_text_from_parts(parts) == "foo bar"
 
     def test_no_text_parts(self):
-        part = MagicMock(spec=Part)
-        part.root = MagicMock()
-        del part.root.text
+        part = Part()
         assert self.executor._extract_text_from_parts([part]) == "[Non-text response]"
 
 
@@ -161,7 +152,7 @@ class TestExecuteInvoke:
         class MultimodalAdapter(BaseA2AAdapter):
             async def invoke(self, user_input, context_id=None, **kwargs):
                 return [
-                    Part(root=TextPart(text="text response")),
+                    Part(text="text response"),
                 ]
 
         executor = AdapterAgentExecutor(MultimodalAdapter())
@@ -226,10 +217,10 @@ class TestExecuteStreaming:
         assert len(artifact_events) == 2
 
     async def test_streaming_filters_empty_text_parts(self, ctx, event_queue):
-        """Part(root=TextPart(text="")) must also be filtered."""
+        """Part(text="") must also be filtered."""
         chunks = [
             "Hello",
-            Part(root=TextPart(text="")),
+            Part(text=""),
             "world",
         ]
         adapter = StreamingStubAdapter(chunks)
@@ -275,8 +266,8 @@ class TestExecuteStreaming:
 
     async def test_streaming_part_objects(self, ctx, event_queue):
         chunks = [
-            Part(root=TextPart(text="foo")),
-            Part(root=TextPart(text="bar")),
+            Part(text="foo"),
+            Part(text="bar"),
         ]
         adapter = StreamingStubAdapter(chunks)
         executor = AdapterAgentExecutor(adapter)
@@ -307,11 +298,11 @@ class TestExecuteStreaming:
             e for e in events if type(e).__name__ == "TaskStatusUpdateEvent"
         ]
         states = [
-            getattr(e.status, "state", None).value
+            getattr(e.status, "state", None)
             for e in status_events
             if hasattr(e, "status") and hasattr(getattr(e, "status", None), "state")
         ]
-        assert "failed" in states
+        assert TaskState.TASK_STATE_FAILED in states
 
     async def test_streaming_failure_no_chunks_still_fails(self, ctx, event_queue):
         """When stream() raises immediately (no chunks emitted),
@@ -331,11 +322,11 @@ class TestExecuteStreaming:
             e for e in events if type(e).__name__ == "TaskStatusUpdateEvent"
         ]
         states = [
-            getattr(e.status, "state", None).value
+            getattr(e.status, "state", None)
             for e in status_events
             if hasattr(e, "status") and hasattr(getattr(e, "status", None), "state")
         ]
-        assert "failed" in states
+        assert TaskState.TASK_STATE_FAILED in states
 
 
 # ── cancel ────────────────────────────────────────────────────

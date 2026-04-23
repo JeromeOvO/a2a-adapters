@@ -1,7 +1,7 @@
 """Tests for CallableAdapter (v0.2)."""
 
 import pytest
-from a2a.types import Part, TextPart
+from a2a.types import Part
 
 from a2a_adapter.integrations.callable import CallableAdapter
 
