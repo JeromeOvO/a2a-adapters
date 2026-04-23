@@ -14,45 +14,58 @@ Single-agent A2A server helpers.
 import warnings
 from typing import AsyncGenerator
 
-# These SDK types/modules were removed or relocated in a2a-sdk>=1.0.
-# Guard only these so unrelated import errors (missing uvicorn, broken
-# local imports, etc.) surface naturally instead of being masked.
+import uvicorn
+from a2a.server.request_handlers.request_handler import RequestHandler
+from a2a.server.context import ServerCallContext
+from a2a.types import (
+    AgentCard,
+    CancelTaskRequest,
+    GetTaskRequest,
+    Message,
+    Task,
+    TaskStatusUpdateEvent,
+    UnsupportedOperationError,
+)
+
+from .adapter import BaseAgentAdapter
+
+# --- V0.x SDK symbols removed in V1.0 --- #
+# Each block guards a specific removed module or set of symbols.
+# If ANY is missing we can't define the legacy classes/functions.
+
 _HAS_LEGACY_SDK = True
+
 try:
-    from a2a.server.apps import A2AStarletteApplication
-    from a2a.server.request_handlers.request_handler import RequestHandler
-    from a2a.types import UnsupportedOperationError
-    from a2a.utils.errors import ServerError
-    from a2a.server.context import ServerCallContext
-    from a2a.types import (
-        AgentCard,
-        CancelTaskRequest,
+    from a2a.server.apps import A2AStarletteApplication  # module deleted in V1.0
+except ImportError:
+    _HAS_LEGACY_SDK = False
+
+try:
+    from a2a.utils.errors import ServerError  # symbol removed in V1.0
+except ImportError:
+    _HAS_LEGACY_SDK = False
+
+try:
+    from a2a.types import (  # RPC wrappers removed in V1.0
         CancelTaskResponse,
         DeleteTaskPushNotificationConfigParams,
         DeleteTaskPushNotificationConfigResponse,
         GetTaskPushNotificationConfigParams,
         GetTaskPushNotificationConfigResponse,
-        GetTaskRequest,
         GetTaskResponse,
         ListTaskPushNotificationConfigParams,
         ListTaskPushNotificationConfigResponse,
-        Message,
         MessageSendParams,
         PushNotificationConfig,
         SetTaskPushNotificationConfigRequest,
         SetTaskPushNotificationConfigResponse,
-        Task,
         TaskResubscriptionRequest,
-        TaskStatusUpdateEvent,
     )
 except ImportError:
     _HAS_LEGACY_SDK = False
 
 
 if _HAS_LEGACY_SDK:
-    import uvicorn
-
-    from .adapter import BaseAgentAdapter
 
     class AdapterRequestHandler(RequestHandler):
         """
