@@ -66,6 +66,20 @@ class TestIsEmptyChunk:
     def test_integer_is_not_empty(self):
         assert AdapterAgentExecutor._is_empty_chunk(42) is False
 
+    def test_bare_part_is_empty(self):
+        """Part() with no oneof content variant set should be empty."""
+        assert AdapterAgentExecutor._is_empty_chunk(Part()) is True
+
+    def test_url_part_is_not_empty(self):
+        """Part with a url variant is meaningful content."""
+        part = Part(url="https://example.com")
+        assert AdapterAgentExecutor._is_empty_chunk(part) is False
+
+    def test_raw_part_is_not_empty(self):
+        """Part with inline binary data is meaningful content."""
+        part = Part(raw=b"data")
+        assert AdapterAgentExecutor._is_empty_chunk(part) is False
+
 
 # ── _to_parts ────────────────────────────────────────────────
 
