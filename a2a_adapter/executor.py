@@ -99,14 +99,10 @@ class AdapterAgentExecutor(AgentExecutor):
     def _is_empty_chunk(chunk: str | Part) -> bool:
         """Check if a chunk carries no meaningful content.
 
-        Empty text chunks produce protobuf Parts where ``text=""`` is the
-        default value, so ``MessageToDict`` omits the field entirely.  The
-        resulting JSON ``{"kind": "text"}`` (no ``text`` key) fails Pydantic
-        validation on the receiving end.  Filter these out before they reach
-        the wire.
-
-        Also catches Parts where no ``oneof content`` variant was set at all
-        (e.g. ``Part()``), which serialize to ``{}`` on the wire.
+        Empty text chunks (``text=""``) carry no meaningful content and should
+        be filtered out before reaching the wire. Also catches Parts where no
+        ``oneof content`` variant was set at all (e.g. ``Part()``), which
+        serialize to ``{}`` on the wire.
         """
         if isinstance(chunk, str):
             return chunk == ""

@@ -303,6 +303,7 @@ class BaseA2AAdapter(ABC):
                 stderr=PIPE,
                 cwd=self.working_dir,
                 env=self._build_env(),
+                limit=10 * 1024 * 1024,  # 10 MB — prevents LimitOverrunError on large output lines
             )
         except FileNotFoundError:
             if not os.path.isdir(self.working_dir):
@@ -410,6 +411,7 @@ class BaseA2AAdapter(ABC):
                 stderr=PIPE,
                 cwd=self.working_dir,
                 env=self._build_env(),
+                limit=10 * 1024 * 1024,  # 10 MB — prevents LimitOverrunError on large output lines
             )
         except FileNotFoundError:
             if not os.path.isdir(self.working_dir):

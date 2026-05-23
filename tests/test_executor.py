@@ -39,8 +39,7 @@ async def _collect_events(queue: EventQueue) -> list:
 
 class TestIsEmptyChunk:
     """Regression tests for the empty-chunk filter that prevents
-    protobuf's MessageToDict from producing ``{"kind": "text"}``
-    (missing ``text`` field) on the wire.
+    empty or contentless Parts from reaching the wire.
     """
 
     def test_empty_string_is_empty(self):
