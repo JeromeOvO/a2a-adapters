@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.2.12] - 2026-05-28
+
+### Fixed
+
+- Increase subprocess `StreamReader` limit to 10 MB in `base_adapter.py` to prevent `LimitOverrunError` on large output lines
+
+### Changed
+
+- Remove stale development plan and tracking documents (`PLAN-hermes-a2a-adapter.md`, `openclaw/TRACKING.md`)
+
 ## [0.2.11] - 2026-05-04
 
 ### Fixed
