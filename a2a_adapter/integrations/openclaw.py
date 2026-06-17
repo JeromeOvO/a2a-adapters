@@ -356,9 +356,14 @@ class OpenClawAdapter(BaseA2AAdapter):
         if not sanitized:
             return self.session_id
 
-        max_suffix_len = _SESSION_ID_MAX_LEN - 4
-        sanitized = sanitized[:max_suffix_len]
-        return f"a2a-{sanitized}"
+        prefix = getattr(self, "session_id", "a2a")
+        max_suffix_len = _SESSION_ID_MAX_LEN - len(prefix) - 1
+        
+        if max_suffix_len > 0:
+            sanitized = sanitized[:max_suffix_len]
+            return f"{prefix}-{sanitized}"
+        else:
+            return f"{prefix}-{sanitized}"[:_SESSION_ID_MAX_LEN]
 
     # ──── Internal: Output Extraction ────
 
@@ -975,8 +980,8 @@ class OpenClawAgentAdapter(BaseAgentAdapter):
         OpenClaw session IDs must match the pattern: ^[a-z0-9][a-z0-9_-]{0,63}$
         This method sanitizes the A2A context_id to conform to that format.
 
-        If context_id is provided, it's sanitized and prefixed with 'a2a-' to
-        namespace it. If context_id is None or empty, falls back to the
+        If context_id is provided, it's sanitized and prefixed with the adapter's
+        session_id to namespace it. If context_id is None or empty, falls back to the
         adapter's default session_id.
 
         Args:
@@ -996,12 +1001,14 @@ class OpenClawAgentAdapter(BaseAgentAdapter):
         if not sanitized:
             return self.session_id
 
-        # Prefix with 'a2a-' to namespace and truncate to max length
-        # Account for 'a2a-' prefix (4 chars) in the max length
-        max_suffix_len = _SESSION_ID_MAX_LEN - 4
-        sanitized = sanitized[:max_suffix_len]
-
-        return f"a2a-{sanitized}"
+        prefix = getattr(self, "session_id", "a2a")
+        max_suffix_len = _SESSION_ID_MAX_LEN - len(prefix) - 1
+        
+        if max_suffix_len > 0:
+            sanitized = sanitized[:max_suffix_len]
+            return f"{prefix}-{sanitized}"
+        else:
+            return f"{prefix}-{sanitized}"[:_SESSION_ID_MAX_LEN]
 
     # ---------- Input mapping ----------
 

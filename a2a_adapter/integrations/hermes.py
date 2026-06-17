@@ -77,6 +77,7 @@ class HermesAdapter(BaseA2AAdapter):
         self._executor = ThreadPoolExecutor(
             max_workers=max_workers, thread_name_prefix="hermes"
         )
+        self.session_id = f"a2a-{uuid.uuid4().hex[:12]}"
         self._session_db = None  # lazy — see _ensure_session_db()
         self._running_agents: dict[str, object] = {}  # task_id → AIAgent
         self._session_locks: dict[str, asyncio.Lock] = {}  # context_id → lock
@@ -223,7 +224,8 @@ class HermesAdapter(BaseA2AAdapter):
         Loads conversation history from SessionDB, runs run_conversation()
         in a thread, and lets the agent persist updates internally.
         """
-        session_id = context_id or f"a2a-{uuid.uuid4().hex[:12]}"
+        prefix = getattr(self, "session_id", "a2a")
+        session_id = f"{prefix}-{context_id}" if context_id else prefix
 
         async with self._session_lock(session_id):
             db = self._ensure_session_db()
@@ -259,7 +261,8 @@ class HermesAdapter(BaseA2AAdapter):
         synchronous thread into an asyncio.Queue, yielding them as an
         async iterator for the bridge layer.
         """
-        session_id = context_id or f"a2a-{uuid.uuid4().hex[:12]}"
+        prefix = getattr(self, "session_id", "a2a")
+        session_id = f"{prefix}-{context_id}" if context_id else prefix
 
         async with self._session_lock(session_id):
             db = self._ensure_session_db()
