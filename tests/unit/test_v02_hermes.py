@@ -153,15 +153,15 @@ class TestInvoke:
         call_kwargs = mock_agent.run_conversation.call_args[1]
         assert call_kwargs["user_message"] == "New msg"
         assert call_kwargs["conversation_history"] == history
-        assert call_kwargs["task_id"] == "sess-1"
+        assert call_kwargs["task_id"] == f"{adapter.session_id}-sess-1"
 
     @pytest.mark.asyncio
     async def test_invoke_uses_context_id_as_session_id(self, adapter):
         mock_agent = _make_mock_agent()
         with patch.object(adapter, "_make_agent", return_value=mock_agent) as mock_make:
             await adapter.invoke("Hi", context_id="my-session")
-        mock_make.assert_called_once_with("my-session")
-        adapter._session_db.get_messages_as_conversation.assert_called_with("my-session")
+        mock_make.assert_called_once_with(f"{adapter.session_id}-my-session")
+        adapter._session_db.get_messages_as_conversation.assert_called_with(f"{adapter.session_id}-my-session")
 
     @pytest.mark.asyncio
     async def test_invoke_generates_session_id_when_none(self, adapter):

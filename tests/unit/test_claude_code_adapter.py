@@ -140,8 +140,8 @@ class TestBuildCommand:
         assert cmd.used_resume is False
 
     def test_command_with_session(self, adapter):
-        adapter._sessions["ctx-1"] = "sess-xyz"
-        cmd = adapter._build_command("test", "ctx-1")
+        adapter._sessions[f"{adapter.session_id}-ctx-1"] = "sess-xyz"
+        cmd = adapter._build_command("test", f"{adapter.session_id}-ctx-1")
         assert "--resume" in cmd.args
         idx = cmd.args.index("--resume")
         assert cmd.args[idx + 1] == "sess-xyz"
@@ -399,7 +399,7 @@ class TestInvoke:
 
         # Assistant text is the response, not result.result
         assert result == "Hello World"
-        assert adapter._sessions["ctx-1"] == "sess-1"
+        assert adapter._sessions[f"{adapter.session_id}-ctx-1"] == "sess-1"
 
     @pytest.mark.asyncio
     async def test_invoke_error_exit(self, adapter, mock_proc):
@@ -481,7 +481,7 @@ class TestStream:
         assert "chunk1" in chunks
         assert "chunk2" in chunks
         assert "metadata" not in chunks
-        assert adapter._sessions["ctx-s"] == "sess-stream"
+        assert adapter._sessions[f"{adapter.session_id}-ctx-s"] == "sess-stream"
 
     @pytest.mark.asyncio
     async def test_stream_error_exit_raises(self, adapter):
@@ -593,7 +593,7 @@ class TestStream:
                     pass
 
         # Session should still be saved from result event
-        assert adapter._sessions["ctx-no-text"] == "sess-meta"
+        assert adapter._sessions[f"{adapter.session_id}-ctx-no-text"] == "sess-meta"
 
     @pytest.mark.asyncio
     async def test_stream_empty_output_raises(self, adapter):
@@ -896,7 +896,7 @@ class TestStaleSessionRetry:
     async def test_invoke_stale_session_retries(self, adapter):
         """Non-zero exit + empty stdout + empty stderr + had --resume -> retry."""
         # Pre-set a session so --resume is used
-        adapter._sessions["ctx-stale"] = "old-session"
+        adapter._sessions[f"{adapter.session_id}-ctx-stale"] = "old-session"
 
         call_count = 0
 
@@ -932,13 +932,13 @@ class TestStaleSessionRetry:
         assert result == "retry success"
         assert call_count == 2
         # Session should be updated to the new one
-        assert adapter._sessions.get("ctx-stale") == "new-sess"
+        assert adapter._sessions.get(f"{adapter.session_id}-ctx-stale") == "new-sess"
 
     @pytest.mark.asyncio
     async def test_no_retry_on_signal_kill(self, adapter):
         """Signal kill (returncode < 0) + empty stdout + had --resume -> NO retry.
         Only positive exit codes trigger stale session retry."""
-        adapter._sessions["ctx-sig"] = "old-session"
+        adapter._sessions[f"{adapter.session_id}-ctx-sig"] = "old-session"
 
         mock_proc = AsyncMock()
         mock_proc.communicate = AsyncMock(return_value=(b"", b""))
@@ -957,7 +957,7 @@ class TestStaleSessionRetry:
                 )
 
         # Session should NOT have been cleared (no stale retry path taken)
-        assert adapter._sessions.get("ctx-sig") == "old-session"
+        assert adapter._sessions.get(f"{adapter.session_id}-ctx-sig") == "old-session"
 
     @pytest.mark.asyncio
     async def test_invoke_no_retry_without_resume(self, adapter):
@@ -982,7 +982,7 @@ class TestStaleSessionRetry:
     async def test_invoke_no_retry_with_stderr(self, adapter):
         """Non-zero exit + empty stdout + had --resume BUT stderr has content
         -> NO retry. Stderr indicates a real error (auth, env, etc.)."""
-        adapter._sessions["ctx-stderr"] = "valid-session"
+        adapter._sessions[f"{adapter.session_id}-ctx-stderr"] = "valid-session"
 
         mock_proc = AsyncMock()
         mock_proc.communicate = AsyncMock(
@@ -1002,12 +1002,12 @@ class TestStaleSessionRetry:
                 )
 
         # Session should NOT have been cleared — it's still valid
-        assert adapter._sessions.get("ctx-stderr") == "valid-session"
+        assert adapter._sessions.get(f"{adapter.session_id}-ctx-stderr") == "valid-session"
 
     @pytest.mark.asyncio
     async def test_stream_no_retry_with_stderr(self, adapter):
         """stream() with stderr content should NOT trigger stale retry."""
-        adapter._sessions["ctx-stderr-s"] = "valid-session"
+        adapter._sessions[f"{adapter.session_id}-ctx-stderr-s"] = "valid-session"
 
         mock_proc = AsyncMock()
         mock_proc.pid = 1
@@ -1029,12 +1029,12 @@ class TestStaleSessionRetry:
                     pass
 
         # Session should NOT have been cleared
-        assert adapter._sessions.get("ctx-stderr-s") == "valid-session"
+        assert adapter._sessions.get(f"{adapter.session_id}-ctx-stderr-s") == "valid-session"
 
     @pytest.mark.asyncio
     async def test_stream_stale_session_retries(self, adapter):
         """stream() also retries on stale session (both stdout and stderr empty)."""
-        adapter._sessions["ctx-ss"] = "old-session"
+        adapter._sessions[f"{adapter.session_id}-ctx-ss"] = "old-session"
 
         call_count = 0
 
@@ -1074,12 +1074,12 @@ class TestStaleSessionRetry:
 
         assert "stream retry ok" in chunks
         assert call_count == 2
-        assert adapter._sessions.get("ctx-ss") == "new-sess-s"
+        assert adapter._sessions.get(f"{adapter.session_id}-ctx-ss") == "new-sess-s"
 
     @pytest.mark.asyncio
     async def test_stream_no_retry_on_signal_kill(self, adapter):
         """Signal kill (returncode < 0) + no output + had --resume -> NO retry in stream."""
-        adapter._sessions["ctx-sig-s"] = "old-session"
+        adapter._sessions[f"{adapter.session_id}-ctx-sig-s"] = "old-session"
 
         mock_proc = AsyncMock()
         mock_proc.pid = 1
@@ -1101,7 +1101,7 @@ class TestStaleSessionRetry:
                     pass
 
         # Session should NOT have been cleared
-        assert adapter._sessions.get("ctx-sig-s") == "old-session"
+        assert adapter._sessions.get(f"{adapter.session_id}-ctx-sig-s") == "old-session"
 
 
 # ──── Test: Session persistence (D4) ────
@@ -1340,7 +1340,7 @@ class TestStreamingStdoutEOF:
 
         # Verify: response was collected correctly
         assert "response text" in chunks
-        assert adapter._sessions["ctx-eof"] == "sess-eof"
+        assert adapter._sessions[f"{adapter.session_id}-ctx-eof"] == "sess-eof"
 
         # KEY ASSERTION: proc.kill() was NOT called (no abort path triggered)
         mock_proc.kill.assert_not_called()
