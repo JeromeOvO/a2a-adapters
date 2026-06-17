@@ -61,7 +61,7 @@ def test_context_id_to_session_id_empty():
 def test_context_id_to_session_id_valid():
     adapter = OpenClawAdapter()
     result = adapter._context_id_to_session_id("my-context-123")
-    assert result == "a2a-my-context-123"
+    assert result == f"{adapter.session_id}-my-context-123"
 
 
 def test_context_id_to_session_id_sanitizes():

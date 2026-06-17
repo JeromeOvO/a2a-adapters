@@ -159,7 +159,7 @@ class TestOpenClawAdapterContextIdMapping:
         context_id = "550e8400-e29b-41d4-a716-446655440000"
         session_id = adapter._context_id_to_session_id(context_id)
         
-        assert session_id == "a2a-550e8400-e29b-41d4-a716-446655440000"
+        assert session_id == "default-session-550e8400-e29b-41d4-a716-446655440000"
 
     def test_context_id_to_session_id_with_special_chars(self):
         """Test that special characters are sanitized."""
@@ -170,7 +170,7 @@ class TestOpenClawAdapterContextIdMapping:
         session_id = adapter._context_id_to_session_id(context_id)
         
         # Should be sanitized: lowercase, special chars replaced with hyphen
-        assert session_id.startswith("a2a-")
+        assert session_id.startswith("default-session-")
         assert ":" not in session_id
         assert "/" not in session_id
         assert " " not in session_id
@@ -203,7 +203,7 @@ class TestOpenClawAdapterContextIdMapping:
         
         # Should be truncated: 'a2a-' (4 chars) + 60 chars = 64 total
         assert len(session_id) == 64
-        assert session_id.startswith("a2a-")
+        assert session_id.startswith("default-session-")
 
     def test_context_id_to_session_id_removes_leading_trailing_hyphens(self):
         """Test that leading/trailing hyphens are removed after sanitization."""
@@ -213,7 +213,7 @@ class TestOpenClawAdapterContextIdMapping:
         context_id = "---test---"
         session_id = adapter._context_id_to_session_id(context_id)
         
-        assert session_id == "a2a-test"
+        assert session_id == "default-session-test"
 
     def test_context_id_to_session_id_handles_all_invalid_chars(self):
         """Test that context_id with only invalid chars falls back to default."""
@@ -233,7 +233,7 @@ class TestOpenClawAdapterContextIdMapping:
         context_id = "user_session_123"
         session_id = adapter._context_id_to_session_id(context_id)
         
-        assert session_id == "a2a-user_session_123"
+        assert session_id == "default-session-user_session_123"
 
     @pytest.mark.asyncio
     async def test_to_framework_uses_context_id_for_session(self):
@@ -245,7 +245,7 @@ class TestOpenClawAdapterContextIdMapping:
         payload = await adapter.to_framework(params)
         
         # Session ID should be derived from context_id, not the default
-        assert payload["session_id"] == "a2a-my-context-123"
+        assert payload["session_id"] == "default-session-my-context-123"
 
     @pytest.mark.asyncio
     async def test_to_framework_falls_back_to_default_session(self):
