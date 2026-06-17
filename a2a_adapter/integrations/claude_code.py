@@ -9,6 +9,7 @@ command building, output parsing, and stream line handling.
 import json
 import logging
 import os
+import uuid
 from typing import AsyncIterator
 
 from ..base_adapter import (
@@ -65,7 +66,6 @@ class ClaudeCodeAdapter(BaseA2AAdapter):
                 working_dir, ".a2a-adapter", "claude-code", "sessions.json"
             ),
         )
-        import uuid
         self.session_id = f"a2a-{uuid.uuid4().hex[:12]}"
         self.claude_path = claude_path
         self._name = name
