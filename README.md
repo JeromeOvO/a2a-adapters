@@ -84,7 +84,7 @@ curl -X POST http://localhost:9000 \
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=hybroai/a2a-adapter&type=Date&legend=top-left)](https://www.star-history.com/?repos=hybroai%2Fa2a-adapter&type=date&legend=top-left)
+[![Star History Chart](https://api.star-history.com/svg?repos=jeromeovo/a2a-adapters&type=Date&legend=top-left)](https://www.star-history.com/?repos=jeromeovo%2Fa2a-adapters&type=date&legend=top-left)
 
 ## License
 
