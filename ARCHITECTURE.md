@@ -2,7 +2,7 @@
 
 ## Overview
 
-The A2A Adapter SDK converts any AI agent into an A2A Protocol server. The key insight: adapters should only answer "given text, return text" — everything else is delegated to the official A2A SDK.
+The A2A Adapter SDK converts any AI agent into an A2A Protocol server. The key insight: adapters should only answer "given text, return text" — everything else is delegated to the official A2A SDK. A thin CLI constructs selected CLI-backed adapters and then enters the same server layer as Python callers.
 
 ## Design Principles
 
@@ -11,14 +11,17 @@ The A2A Adapter SDK converts any AI agent into an A2A Protocol server. The key i
 3. **Layered Escape Hatch** — Level 1: `invoke()` / Level 2: `stream()` / Level 3: implement `AgentExecutor` directly
 4. **Open-Closed** — extend via `register_adapter()` without modifying core
 5. **Single Import Source** — `from a2a_adapter import XxxAdapter, serve_agent`
+6. **Thin CLI** — parse process/server options, construct an existing adapter,
+   and delegate to `serve_agent()` without duplicating protocol behavior
 
 ## Architecture Layers
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│  Layer 1: User-Facing API                                    │
-│  serve_agent() / to_a2a() / build_agent_card()               │
-│  (a2a_adapter/server.py)                                     │
+│  Layer 1: User-Facing Interface                              │
+│  CLI → existing adapter → serve_agent()                      │
+│  Python → serve_agent() / to_a2a() / build_agent_card()      │
+│  (a2a_adapter/cli.py, a2a_adapter/server.py)                 │
 ├──────────────────────────────────────────────────────────────┤
 │  Layer 2: A2A SDK Protocol Handling                          │
 │  DefaultRequestHandler + InMemoryTaskStore                   │
@@ -113,6 +116,19 @@ Three public functions:
 - **`serve_agent(adapter, port)`** — `to_a2a()` + `uvicorn.run()`
 - **`build_agent_card(adapter)`** — `adapter.get_metadata()` → `AgentCard`
 
+### CLI Entry Point (`cli.py`)
+
+The `a2a-adapter` console script is intentionally thin:
+
+- Supports `pi`, `codex`, `claude`, and `openclaw`
+- Resolves the working directory and A2A server settings
+- Passes native agent arguments after `--` into the selected adapter
+- Rejects protocol/session flags owned by the adapter
+- Calls the same `serve_agent()` used by Python SDK consumers
+
+Hermes is not a v1 CLI target because `HermesAdapter` is an in-process gateway
+adapter rather than a local CLI subprocess adapter.
+
 ### Loader (`loader.py`)
 
 Registry pattern for config-driven deployments:
@@ -131,6 +147,8 @@ Each adapter extends `BaseA2AAdapter` with framework-specific logic:
 | `LangChainAdapter` | `ainvoke()` / `astream()` with output extraction | Yes (auto-detected) |
 | `LangGraphAdapter` | `ainvoke()` / `astream()` with state delta streaming | Yes (auto-detected) |
 | `CrewAIAdapter` | `kickoff_async()` with sync fallback | No |
+| `ClaudeCodeAdapter` | `claude` subprocess + stream-json parsing and resume | Yes |
+| `CodexAdapter` | `codex exec --json` subprocess + thread resume | No |
 | `OpenClawAdapter` | Subprocess exec + JSON parse + cancel (kill) | No |
 | `HermesAdapter` | Gateway pattern: `SessionDB` + `AIAgent.run_conversation()` in a thread pool; requires Hermes on `PYTHONPATH` | Yes (callback → queue) |
 | `OllamaAdapter` | Wraps `OllamaClient` HTTP client (`/api/chat`) | Yes (NDJSON streaming) |
@@ -159,6 +177,7 @@ a2a_adapter/
 ├── __init__.py          # Public API + lazy imports
 ├── base_adapter.py      # BaseA2AAdapter + AdapterMetadata
 ├── executor.py          # AdapterAgentExecutor (bridge)
+├── cli.py               # Thin console entry point for CLI-backed agents
 ├── server.py            # to_a2a() / serve_agent() / build_agent_card()
 ├── loader.py            # load_adapter() / register_adapter()
 ├── adapter.py           # [deprecated] v0.1 BaseAgentAdapter
@@ -171,6 +190,8 @@ a2a_adapter/
     ├── langgraph.py     # LangGraphAdapter + LangGraphAgentAdapter
     ├── crewai.py        # CrewAIAdapter + CrewAIAgentAdapter
     ├── ollama.py        # OllamaClient + OllamaAdapter
+    ├── claude_code.py   # ClaudeCodeAdapter
+    ├── codex.py         # CodexAdapter
     ├── openclaw.py      # OpenClawAdapter + OpenClawAgentAdapter
     ├── hermes.py        # HermesAdapter (Hermes Agent gateway pattern)
     └── pi.py            # PiAdapter and internal persistent JSONL RPC runtime
@@ -180,6 +201,8 @@ a2a_adapter/
 
 - **Unit tests** (`tests/unit/test_v02_*.py`) — test each v0.2 adapter in isolation with mocks
 - **Unit tests** (`tests/unit/test_*.py`) — existing v0.1 tests (still passing for backwards compat)
+- **CLI tests** (`tests/unit/test_cli.py`) — parsing, help, adapter construction,
+  native argument placement, and managed-option rejection
 - **Integration tests** (`tests/integration/`) — full A2A request/response cycle
 
 ## Migration Path

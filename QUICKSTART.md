@@ -2,12 +2,15 @@
 
 Get your first A2A agent running in under 5 minutes.
 
-This guide will help you expose your existing agent (n8n workflow, CrewAI crew, LangChain chain, LangGraph workflow, or any function) as an A2A-compatible agent.
+This guide covers two ways to expose an agent: a thin CLI for supported local
+agent executables, and the Python SDK for frameworks and custom integrations.
 
 ## Prerequisites
 
 - Python 3.11+
-- An agent to expose (n8n workflow, CrewAI crew, LangChain chain, or custom function)
+- For the CLI path: Pi, Codex, Claude, or OpenClaw installed locally
+- For the SDK path: an n8n workflow, CrewAI crew, LangChain chain, LangGraph
+  workflow, local agent, or custom function
 
 ## Step 1: Install
 
@@ -24,7 +27,32 @@ pip install a2a-adapter[langgraph]     # LangGraph
 pip install a2a-adapter[all]           # Everything
 ```
 
-## Step 2: Create Your Agent
+## Option 1: Start a Local Agent with the CLI
+
+Run the command from the project directory the agent should use:
+
+```bash
+a2a-adapter pi --port 9012
+a2a-adapter codex --port 9011
+a2a-adapter claude --port 9010
+a2a-adapter openclaw --port 9008
+```
+
+Use `--cwd /path/to/project` to select another directory. A2A server options
+go before `--`; native agent options go after it:
+
+```bash
+a2a-adapter pi --port 9012 -- --model <model> --thinking high
+a2a-adapter codex --port 9011 -- --model <model> --sandbox workspace-write
+a2a-adapter claude --port 9010 -- --model <model>
+a2a-adapter openclaw --port 9008 --agent-id main --thinking high
+```
+
+Run `a2a-adapter -help` to list supported agents, or
+`a2a-adapter <agent> -help` for agent-specific options. Hermes is available as
+a Python SDK adapter but is not supported by the v1 CLI.
+
+## Option 2: Create an Agent with the Python SDK
 
 Choose your framework — every example follows the same 3-line pattern: **import**, **adapter**, **serve**.
 
@@ -144,7 +172,7 @@ class MyAdapter(BaseA2AAdapter):
 serve_agent(MyAdapter(), port=9000)
 ```
 
-## Step 3: Run Your Agent
+### Run Your SDK Agent
 
 ```bash
 python my_agent.py
@@ -154,16 +182,17 @@ Your agent is now running at `http://localhost:9000`.
 
 The A2A SDK automatically:
 - Generates an **AgentCard** from your adapter metadata
-- Serves it at `/.well-known/agent.json`
+- Serves it at `/.well-known/agent-card.json` (with the legacy
+  `/.well-known/agent.json` alias)
 - Handles **task management**, **JSON-RPC 2.0**, and **SSE streaming**
 
-## Step 4: Test Your Agent
+## Test Either Kind of Agent
 
 ### Using curl
 
 ```bash
 # Fetch the auto-generated agent card
-curl http://localhost:9000/.well-known/agent.json
+curl http://localhost:9000/.well-known/agent-card.json
 
 # Send a message via JSON-RPC 2.0
 curl -X POST http://localhost:9000 \
@@ -196,7 +225,7 @@ import asyncio, httpx
 async def main():
     async with httpx.AsyncClient(timeout=60) as client:
         # Fetch agent card
-        card = (await client.get("http://localhost:9000/.well-known/agent.json")).json()
+        card = (await client.get("http://localhost:9000/.well-known/agent-card.json")).json()
         print(f"Agent: {card['name']}")
 
         # Send a message
@@ -219,7 +248,7 @@ asyncio.run(main())
 
 ## What's Next?
 
-### Supported Frameworks
+### Supported Python SDK Adapters
 
 | Framework | Adapter | Streaming |
 |---|---|---|
@@ -227,9 +256,12 @@ asyncio.run(main())
 | LangChain | `LangChainAdapter` | Auto-detected |
 | LangGraph | `LangGraphAdapter` | Auto-detected |
 | CrewAI | `CrewAIAdapter` | - |
+| Claude Code | `ClaudeCodeAdapter` | Yes |
+| Codex | `CodexAdapter` | - |
 | OpenClaw | `OpenClawAdapter` | - |
 | Ollama | `OllamaAdapter` | Yes |
 | Pi | `PiAdapter` | Yes |
+| Hermes | `HermesAdapter` | Yes |
 | Any function | `CallableAdapter` | Optional |
 | Custom class | `BaseA2AAdapter` | Optional |
 

@@ -20,7 +20,46 @@ CrewAI, Ollama, Hermes Agent, and custom Python functions.
 pip install a2a-adapter
 ```
 
-## Three-line Pattern
+## CLI Use Case
+
+Use the CLI when you want to expose an already installed local agent from the
+current terminal directory without writing Python:
+
+```bash
+a2a-adapter pi --port 9012
+a2a-adapter codex --port 9011
+a2a-adapter claude --port 9010
+a2a-adapter openclaw --port 9008
+```
+
+Options before `--` configure the A2A server. Options after `--` are passed
+to the underlying agent CLI:
+
+```bash
+a2a-adapter pi --port 9012 -- --model <model> --thinking high
+a2a-adapter codex --port 9011 -- --model <model> --sandbox workspace-write
+a2a-adapter claude --port 9010 -- --model <model>
+a2a-adapter openclaw --port 9008 --agent-id main --thinking high
+```
+
+Use `--cwd /path/to/project` to choose another working directory and
+`--host 0.0.0.0` when the server must be reachable outside the local machine.
+Pi source commands can be selected without a shell wrapper:
+
+```bash
+A2A_PI_COMMAND='npx tsx /path/to/pi/packages/coding-agent/src/cli.ts' \
+  a2a-adapter pi --port 9012
+```
+
+Run `a2a-adapter -help` for the supported agents, or
+`a2a-adapter <agent> -help` for agent-specific usage.
+The adapter owns protocol and session flags such as Pi's `--mode rpc` and
+Codex's `--json`; those flags cannot be overridden after `--`.
+
+## Python SDK Use Case
+
+Use the Python SDK when embedding A2A support in an application, wrapping a
+Python framework, or providing custom adapter configuration:
 
 ```python
 from a2a_adapter import CallableAdapter, serve_agent
@@ -29,13 +68,13 @@ adapter = CallableAdapter(func=lambda inputs: f"Echo: {inputs['message']}", name
 serve_agent(adapter, port=9000)
 ```
 
-Your agent is now available as an A2A server with an auto-generated AgentCard at:
+The SDK produces the same A2A server and auto-generated AgentCard:
 
 ```text
 http://localhost:9000/.well-known/agent-card.json
 ```
 
-## Supported Frameworks/Agents
+## Supported Python SDK Adapters
 
 | Framework or agent | Adapter | Streaming | Example |
 |---|---|---:|---|

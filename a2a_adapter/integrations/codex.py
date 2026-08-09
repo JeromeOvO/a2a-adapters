@@ -9,6 +9,7 @@ command building and output parsing.
 import json
 import logging
 import os
+from collections.abc import Sequence
 from typing import Any
 
 from ..base_adapter import (
@@ -47,6 +48,7 @@ class CodexAdapter(BaseA2AAdapter):
         working_dir: str,
         timeout: int = 600,
         codex_path: str = "codex",
+        cli_args: Sequence[str] | None = None,
         env_vars: dict[str, str] | None = None,
         session_store_path: str | None = None,
         name: str = "",
@@ -58,6 +60,8 @@ class CodexAdapter(BaseA2AAdapter):
         bypass_approvals: bool | None = None,
         skip_git_check: bool | None = None,
     ) -> None:
+        if isinstance(cli_args, str):
+            raise TypeError("cli_args must be a sequence of arguments, not a string")
         super().__init__(
             working_dir=working_dir,
             timeout=timeout,
@@ -68,6 +72,7 @@ class CodexAdapter(BaseA2AAdapter):
             ),
         )
         self.codex_path = codex_path
+        self.cli_args = list(cli_args or [])
         self._name = name
         self._description = description
         self._skills = skills or []
@@ -131,7 +136,7 @@ class CodexAdapter(BaseA2AAdapter):
     # ──── Hooks ────
 
     def _build_command(self, message: str, context_key: str) -> CommandResult:
-        cmd = [self.codex_path, "exec"]
+        cmd = [self.codex_path, "exec", *self.cli_args]
         thread_id = self._sessions.get(context_key)
         if thread_id:
             cmd.extend(["resume", thread_id])

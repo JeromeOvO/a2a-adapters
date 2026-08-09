@@ -10,7 +10,7 @@ import json
 import logging
 import os
 import uuid
-from typing import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 
 from ..base_adapter import (
     AdapterMetadata,
@@ -47,6 +47,7 @@ class ClaudeCodeAdapter(BaseA2AAdapter):
         working_dir: str,
         timeout: int = 600,
         claude_path: str = "claude",
+        cli_args: Sequence[str] | None = None,
         env_vars: dict[str, str] | None = None,
         session_store_path: str | None = None,
         name: str = "",
@@ -57,6 +58,8 @@ class ClaudeCodeAdapter(BaseA2AAdapter):
         icon_url: str | None = None,
         skip_permissions: bool | None = None,
     ) -> None:
+        if isinstance(cli_args, str):
+            raise TypeError("cli_args must be a sequence of arguments, not a string")
         super().__init__(
             working_dir=working_dir,
             timeout=timeout,
@@ -68,6 +71,7 @@ class ClaudeCodeAdapter(BaseA2AAdapter):
         )
         self.session_id = f"a2a-{uuid.uuid4().hex[:12]}"
         self.claude_path = claude_path
+        self.cli_args = list(cli_args or [])
         self._name = name
         self._description = description
         self._skills = skills or []
@@ -133,6 +137,7 @@ class ClaudeCodeAdapter(BaseA2AAdapter):
     def _build_command(self, message: str, context_key: str) -> CommandResult:
         cmd = [
             self.claude_path,
+            *self.cli_args,
             "-p", message,
             "--output-format", "stream-json",
             "--verbose",

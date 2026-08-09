@@ -1,5 +1,11 @@
 # a2a-adapter v0.2 Architecture Design
 
+> **Current implementation note (2026-08-09):** This document records the
+> original v0.2 SDK design. The repository now also ships a thin
+> `a2a-adapter` console entry point for Pi, Codex, Claude, and OpenClaw. It
+> constructs the existing adapters and delegates to `serve_agent()`; Hermes
+> remains SDK-only.
+
 ## 1. Executive Summary
 
 ### 1.1 What is a2a-adapter
@@ -1282,7 +1288,7 @@ For each adapter:
 | RemoteA2aAgent client | Medium | Call remote A2A agents as local sub-agents (ADK consuming pattern) |
 | AgentCard from docstring | Low | Auto-extract description/skills from adapter class docstring |
 | Ops middleware | Low | Auth, rate limiting, tracing middleware for Starlette app |
-| `to_a2a` CLI | Low | `a2a-adapter serve --config agent.yaml` command-line tool |
+| Thin local-agent CLI | Shipped | `a2a-adapter pi|codex|claude|openclaw`; server options before `--`, native agent options after `--` |
 
 ---
 

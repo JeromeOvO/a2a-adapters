@@ -1,6 +1,19 @@
 # A2A Adapter Examples
 
-Each example demonstrates the **3-line pattern**: `import` -> `adapter` -> `serve_agent`.
+These are **Python SDK examples**. Each demonstrates the 3-line pattern:
+`import` -> `adapter` -> `serve_agent`.
+
+For the no-code CLI use case, run one of the supported local agent commands
+directly from the target project directory:
+
+```bash
+a2a-adapter pi --port 9012
+a2a-adapter codex --port 9011
+a2a-adapter claude --port 9010
+a2a-adapter openclaw --port 9008
+```
+
+Use `a2a-adapter -help` for CLI usage. Hermes remains SDK-only in v1.
 
 ## Prerequisites
 
@@ -50,7 +63,7 @@ export ANTHROPIC_API_KEY="your-key"
 | `single_agent_client.py` | httpx | - | - | **Client**: test any A2A agent |
 | `v02_quickstart.py` | Mixed | - | 9000 | Quick start: callable, n8n, custom |
 
-## Quick Start
+## Python SDK Quick Start
 
 ### Simplest possible agent (3 lines)
 
