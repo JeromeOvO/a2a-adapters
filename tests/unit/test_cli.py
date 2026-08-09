@@ -164,8 +164,12 @@ def test_help_aliases_include_usage(argv, capsys):
     [
         ("pi", "--mode"),
         ("pi", "--session-id=other"),
+        ("pi", "-pignored"),
         ("codex", "--json"),
+        ("codex", "-C/tmp"),
+        ("codex", "-opath"),
         ("claude", "--output-format"),
+        ("claude", "-csession-id"),
         ("openclaw", "--message"),
     ],
 )

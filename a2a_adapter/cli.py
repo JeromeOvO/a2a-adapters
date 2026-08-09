@@ -145,6 +145,17 @@ def _option_name(value: str) -> str:
     return value.split("=", 1)[0]
 
 
+def _managed_option(value: str, managed: set[str]) -> str | None:
+    option_name = _option_name(value)
+    if option_name in managed:
+        return option_name
+
+    for option in sorted(managed):
+        if len(option) == 2 and option.startswith("-") and value.startswith(option):
+            return option
+    return None
+
+
 def _validate_agent_args(
     parser: argparse.ArgumentParser,
     agent: str,
@@ -152,8 +163,8 @@ def _validate_agent_args(
 ) -> None:
     managed = _MANAGED_OPTIONS[agent]
     for value in agent_args:
-        option = _option_name(value)
-        if option in managed:
+        option = _managed_option(value, managed)
+        if option is not None:
             parser.error(
                 f"{agent} option {option!r} is managed by a2a-adapter and cannot be passed after '--'"
             )
