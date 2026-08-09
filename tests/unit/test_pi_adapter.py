@@ -8,8 +8,7 @@ import httpx
 import pytest
 
 from a2a_adapter.exceptions import CancelledByAdapterError
-from a2a_adapter.integrations._pi_rpc import PiTurnAbortedError
-from a2a_adapter.integrations.pi import PiAdapter
+from a2a_adapter.integrations.pi import PiAdapter, PiTurnAbortedError
 from a2a_adapter.loader import load_adapter
 from a2a_adapter.server import to_a2a
 

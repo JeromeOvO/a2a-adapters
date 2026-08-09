@@ -173,8 +173,7 @@ a2a_adapter/
     ├── ollama.py        # OllamaClient + OllamaAdapter
     ├── openclaw.py      # OpenClawAdapter + OpenClawAgentAdapter
     ├── hermes.py        # HermesAdapter (Hermes Agent gateway pattern)
-    ├── pi.py            # PiAdapter (single persistent process/session)
-    └── _pi_rpc.py       # Internal Pi JSONL subprocess client
+    └── pi.py            # PiAdapter and internal persistent JSONL RPC runtime
 ```
 
 ## Testing Strategy

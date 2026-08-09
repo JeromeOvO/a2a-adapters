@@ -7,7 +7,8 @@ from unittest.mock import patch
 
 import pytest
 
-from a2a_adapter.integrations._pi_rpc import (
+from a2a_adapter.integrations.pi import (
+    PiCommandTimeoutError,
     PiProcessLostError,
     PiRpcProcess,
     PiTurnAbortedError,
@@ -126,7 +127,7 @@ async def test_prompt_streams_text_until_agent_settled(tmp_path):
     rpc = _rpc(tmp_path)
 
     with patch(
-        "a2a_adapter.integrations._pi_rpc.create_subprocess_exec",
+        "a2a_adapter.integrations.pi.create_subprocess_exec",
         return_value=process,
     ):
         await rpc.start()
@@ -166,7 +167,7 @@ async def test_process_loss_after_prompt_acceptance_is_not_retryable(tmp_path):
     rpc = _rpc(tmp_path)
 
     with patch(
-        "a2a_adapter.integrations._pi_rpc.create_subprocess_exec",
+        "a2a_adapter.integrations.pi.create_subprocess_exec",
         return_value=process,
     ):
         await rpc.start()
@@ -221,7 +222,7 @@ async def test_abort_uses_rpc_and_waits_for_settled(tmp_path):
     rpc = _rpc(tmp_path)
 
     with patch(
-        "a2a_adapter.integrations._pi_rpc.create_subprocess_exec",
+        "a2a_adapter.integrations.pi.create_subprocess_exec",
         return_value=process,
     ):
         await rpc.start()
@@ -284,7 +285,7 @@ async def test_blocking_extension_ui_is_cancelled_instead_of_hanging(tmp_path):
     rpc = _rpc(tmp_path)
 
     with patch(
-        "a2a_adapter.integrations._pi_rpc.create_subprocess_exec",
+        "a2a_adapter.integrations.pi.create_subprocess_exec",
         return_value=process,
     ):
         await rpc.start()
@@ -335,7 +336,7 @@ async def test_cancelled_caller_does_not_leave_pi_turn_running(tmp_path):
     rpc = _rpc(tmp_path)
 
     with patch(
-        "a2a_adapter.integrations._pi_rpc.create_subprocess_exec",
+        "a2a_adapter.integrations.pi.create_subprocess_exec",
         return_value=process,
     ):
         await rpc.start()
@@ -344,6 +345,95 @@ async def test_cancelled_caller_does_not_leave_pi_turn_running(tmp_path):
         turn.cancel()
         with pytest.raises(asyncio.CancelledError):
             await turn
+
+    assert process.returncode == -15
+    assert rpc.is_running is False
+
+
+@pytest.mark.asyncio
+async def test_closed_stream_does_not_leave_pi_turn_running(tmp_path):
+    process: FakeProcess
+
+    def on_command(command: dict) -> None:
+        if command["type"] == "get_state":
+            process.stdout.feed_json(
+                {
+                    "id": command["id"],
+                    "type": "response",
+                    "command": "get_state",
+                    "success": True,
+                    "data": {"sessionId": "session-1"},
+                }
+            )
+        elif command["type"] == "prompt":
+            process.stdout.feed_json(
+                {
+                    "id": command["id"],
+                    "type": "response",
+                    "command": "prompt",
+                    "success": True,
+                }
+            )
+            process.stdout.feed_json(
+                {
+                    "type": "message_update",
+                    "assistantMessageEvent": {"type": "text_delta", "delta": "partial"},
+                }
+            )
+        elif command["type"] == "abort":
+            process.stdout.feed_json(
+                {
+                    "id": command["id"],
+                    "type": "response",
+                    "command": "abort",
+                    "success": True,
+                }
+            )
+
+    process = FakeProcess(on_command)
+    rpc = _rpc(tmp_path)
+
+    with patch(
+        "a2a_adapter.integrations.pi.create_subprocess_exec",
+        return_value=process,
+    ):
+        await rpc.start()
+        stream = rpc.prompt("work")
+        assert await anext(stream) == "partial"
+        await stream.aclose()
+
+    assert process.returncode == -15
+    assert rpc.is_running is False
+
+
+@pytest.mark.asyncio
+async def test_prompt_acceptance_timeout_terminates_uncertain_process(tmp_path):
+    process: FakeProcess
+
+    def on_command(command: dict) -> None:
+        if command["type"] == "get_state":
+            process.stdout.feed_json(
+                {
+                    "id": command["id"],
+                    "type": "response",
+                    "command": "get_state",
+                    "success": True,
+                    "data": {"sessionId": "session-1"},
+                }
+            )
+        # Intentionally never acknowledge the prompt. Pi may still have
+        # accepted it, so keeping this shared process would be unsafe.
+
+    process = FakeProcess(on_command)
+    rpc = _rpc(tmp_path, timeout=0.01)
+
+    with patch(
+        "a2a_adapter.integrations.pi.create_subprocess_exec",
+        return_value=process,
+    ):
+        await rpc.start()
+        with pytest.raises(PiCommandTimeoutError, match="'prompt' timed out"):
+            await _collect(rpc.prompt("work"))
 
     assert process.returncode == -15
     assert rpc.is_running is False
