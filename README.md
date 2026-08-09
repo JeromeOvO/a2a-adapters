@@ -11,8 +11,8 @@ frameworks behind the [A2A (Agent-to-Agent) Protocol](https://github.com/a2aproj
 It handles AgentCard generation, JSON-RPC, task lifecycle, and streaming through
 the official A2A SDK, so your adapter only needs to invoke the underlying agent.
 
-Works with Claude Code, Codex, OpenClaw, n8n, LangGraph, LangChain, CrewAI,
-Ollama, Hermes Agent, and custom Python functions.
+Works with Claude Code, Codex, Pi, OpenClaw, n8n, LangGraph, LangChain,
+CrewAI, Ollama, Hermes Agent, and custom Python functions.
 
 ## Install
 
@@ -41,6 +41,7 @@ http://localhost:9000/.well-known/agent-card.json
 |---|---|---:|---|
 | Claude Code | `ClaudeCodeAdapter` | Yes | [claude_code_agent.py](examples/claude_code_agent.py) |
 | Codex | `CodexAdapter` | No | [codex_agent.py](examples/codex_agent.py) |
+| Pi | `PiAdapter` | Yes | [pi_agent.py](examples/pi_agent.py) |
 | OpenClaw | `OpenClawAdapter` | No | [openclaw_agent.py](examples/openclaw_agent.py) |
 | n8n | `N8nAdapter` | No | [n8n_agent.py](examples/n8n_agent.py) |
 | LangGraph | `LangGraphAdapter` | Yes | [langgraph_server.py](examples/langgraph_server.py) |
@@ -50,6 +51,37 @@ http://localhost:9000/.well-known/agent-card.json
 | Hermes Agent | `HermesAdapter` | Yes | [hermes_agent.py](examples/hermes_agent.py) |
 | Python callable | `CallableAdapter` | Optional | [v02_quickstart.py](examples/v02_quickstart.py) |
 | Custom class | `BaseA2AAdapter` | Optional | [custom_adapter.py](examples/custom_adapter.py) |
+
+### Persistent Pi session
+
+`PiAdapter` starts one `pi --mode rpc` process lazily and reuses the same Pi
+session for every turn. By default, the first non-empty A2A `context_id` binds
+the endpoint; requests from another context are rejected instead of silently
+sharing conversation history.
+
+```python
+from a2a_adapter import PiAdapter, serve_agent
+
+adapter = PiAdapter(
+    working_dir="/path/to/project",
+    session_id="my-pi-agent",
+)
+serve_agent(adapter, port=9012)
+```
+
+To run Pi directly from a source checkout, pass the source entrypoint command:
+
+```python
+adapter = PiAdapter(
+    working_dir="/path/to/project",
+    pi_command=[
+        "npx", "tsx", "/path/to/pi/packages/coding-agent/src/cli.ts",
+    ],
+)
+```
+
+Pi requests are serialized because one Adapter represents one process and one
+session. Run this stateful Adapter with a single ASGI worker.
 
 ## Test a Running Agent
 

@@ -134,6 +134,7 @@ Each adapter extends `BaseA2AAdapter` with framework-specific logic:
 | `OpenClawAdapter` | Subprocess exec + JSON parse + cancel (kill) | No |
 | `HermesAdapter` | Gateway pattern: `SessionDB` + `AIAgent.run_conversation()` in a thread pool; requires Hermes on `PYTHONPATH` | Yes (callback → queue) |
 | `OllamaAdapter` | Wraps `OllamaClient` HTTP client (`/api/chat`) | Yes (NDJSON streaming) |
+| `PiAdapter` | One persistent `pi --mode rpc` process and session | Yes (JSONL events) |
 | `CallableAdapter` | Direct function call | Optional |
 
 **Input pipeline (all adapters):** `input_mapper` > JSON parse > `input_key` fallback.
@@ -171,7 +172,9 @@ a2a_adapter/
     ├── crewai.py        # CrewAIAdapter + CrewAIAgentAdapter
     ├── ollama.py        # OllamaClient + OllamaAdapter
     ├── openclaw.py      # OpenClawAdapter + OpenClawAgentAdapter
-    └── hermes.py        # HermesAdapter (Hermes Agent gateway pattern)
+    ├── hermes.py        # HermesAdapter (Hermes Agent gateway pattern)
+    ├── pi.py            # PiAdapter (single persistent process/session)
+    └── _pi_rpc.py       # Internal Pi JSONL subprocess client
 ```
 
 ## Testing Strategy

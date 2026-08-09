@@ -1,0 +1,418 @@
+"""Persistent JSONL subprocess client for Pi's ``--mode rpc`` protocol."""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+import os
+from asyncio.subprocess import PIPE, Process, create_subprocess_exec
+from collections import deque
+from collections.abc import AsyncIterator, Sequence
+from contextlib import suppress
+from typing import Any
+
+
+logger = logging.getLogger(__name__)
+
+_BLOCKING_EXTENSION_UI_METHODS = {"select", "confirm", "input", "editor"}
+
+
+class PiRpcError(RuntimeError):
+    """Base error for Pi RPC failures."""
+
+
+class PiCommandError(PiRpcError):
+    """Pi rejected an RPC command."""
+
+
+class PiProtocolError(PiRpcError):
+    """Pi emitted malformed or inconsistent protocol output."""
+
+
+class PiTurnAbortedError(PiRpcError):
+    """The active Pi turn was aborted."""
+
+
+class PiTurnTimeoutError(PiRpcError):
+    """The active Pi turn exceeded its configured timeout."""
+
+
+class PiProcessLostError(PiRpcError):
+    """The Pi process exited during a turn.
+
+    ``accepted`` distinguishes safe pre-acceptance failures from an uncertain
+    outcome after Pi accepted a prompt and may have executed side effects.
+    """
+
+    def __init__(self, message: str, *, accepted: bool) -> None:
+        super().__init__(message)
+        self.accepted = accepted
+
+
+class _ProcessExitedError(PiRpcError):
+    """Internal process-exit signal used by pending requests and event readers."""
+
+
+class PiRpcProcess:
+    """Own one long-lived Pi RPC process and one durable Pi session."""
+
+    def __init__(
+        self,
+        *,
+        command: Sequence[str],
+        working_dir: str,
+        session_id: str,
+        session_dir: str,
+        env_vars: dict[str, str] | None = None,
+        provider: str | None = None,
+        model: str | None = None,
+        timeout: float = 600,
+        startup_timeout: float = 30,
+        cancel_grace_timeout: float = 10,
+    ) -> None:
+        if not command:
+            raise ValueError("Pi command must not be empty")
+
+        self.command = list(command)
+        self.working_dir = working_dir
+        self.session_id = session_id
+        self.session_dir = session_dir
+        self.env_vars = dict(env_vars) if env_vars else {}
+        self.provider = provider
+        self.model = model
+        self.timeout = timeout
+        self.startup_timeout = startup_timeout
+        self.cancel_grace_timeout = cancel_grace_timeout
+
+        self._process: Process | None = None
+        self._pending: dict[str, asyncio.Future[dict[str, Any]]] = {}
+        self._events: asyncio.Queue[dict[str, Any] | BaseException] = asyncio.Queue()
+        self._write_lock = asyncio.Lock()
+        self._request_number = 0
+        self._stdout_task: asyncio.Task[None] | None = None
+        self._stderr_task: asyncio.Task[None] | None = None
+        self._watch_task: asyncio.Task[None] | None = None
+        self._failure: BaseException | None = None
+        self._closing = False
+        self._turn_active = False
+        self._turn_settled = asyncio.Event()
+        self._turn_settled.set()
+        self._stderr_tail: deque[bytes] = deque(maxlen=64)
+
+    @property
+    def is_running(self) -> bool:
+        return (
+            self._process is not None
+            and self._process.returncode is None
+            and self._failure is None
+            and not self._closing
+        )
+
+    async def start(self) -> None:
+        """Start Pi and verify protocol readiness with ``get_state``."""
+        if self.is_running:
+            return
+        if self._process is not None:
+            raise PiRpcError("A PiRpcProcess instance cannot be restarted")
+        if not os.path.isdir(self.working_dir):
+            raise FileNotFoundError(f"Working directory does not exist: '{self.working_dir}'")
+
+        os.makedirs(self.session_dir, exist_ok=True)
+        args = [
+            *self.command,
+            "--mode",
+            "rpc",
+            "--session-id",
+            self.session_id,
+            "--session-dir",
+            self.session_dir,
+        ]
+        if self.provider:
+            args.extend(["--provider", self.provider])
+        if self.model:
+            args.extend(["--model", self.model])
+
+        env = os.environ.copy()
+        env.update(self.env_vars)
+
+        try:
+            self._process = await create_subprocess_exec(
+                *args,
+                stdin=PIPE,
+                stdout=PIPE,
+                stderr=PIPE,
+                cwd=self.working_dir,
+                env=env,
+                limit=10 * 1024 * 1024,
+            )
+        except FileNotFoundError as error:
+            raise FileNotFoundError(
+                f"Pi executable not found at '{self.command[0]}'. "
+                "Install Pi or provide a source command with pi_command."
+            ) from error
+
+        self._stdout_task = asyncio.create_task(self._read_stdout())
+        self._stderr_task = asyncio.create_task(self._read_stderr())
+        self._watch_task = asyncio.create_task(self._watch_process())
+
+        try:
+            response = await self.request({"type": "get_state"}, timeout=self.startup_timeout)
+            actual_session_id = response.get("data", {}).get("sessionId")
+            if actual_session_id != self.session_id:
+                raise PiProtocolError(
+                    "Pi readiness check returned an unexpected session ID: "
+                    f"{actual_session_id!r}"
+                )
+        except Exception:
+            await self.close()
+            raise
+
+    async def request(
+        self, command: dict[str, Any], *, timeout: float | None = None
+    ) -> dict[str, Any]:
+        """Send one correlated RPC command and await its response."""
+        if not self.is_running:
+            if self._failure:
+                raise self._failure
+            raise PiRpcError("Pi RPC process is not running")
+
+        self._request_number += 1
+        request_id = f"a2a-{self._request_number}"
+        payload = dict(command)
+        payload["id"] = request_id
+
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future[dict[str, Any]] = loop.create_future()
+        self._pending[request_id] = future
+
+        try:
+            await self._write_payload(payload)
+            response = await asyncio.wait_for(
+                asyncio.shield(future), timeout=timeout or self.timeout
+            )
+        except asyncio.TimeoutError:
+            self._pending.pop(request_id, None)
+            future.cancel()
+            raise PiRpcError(f"Pi RPC command {command.get('type')!r} timed out") from None
+        except asyncio.CancelledError:
+            self._pending.pop(request_id, None)
+            future.cancel()
+            raise
+        except Exception:
+            self._pending.pop(request_id, None)
+            raise
+
+        if not response.get("success", False):
+            error = response.get("error") or "unknown Pi RPC error"
+            raise PiCommandError(f"Pi rejected {command.get('type')!r}: {error}")
+        return response
+
+    async def prompt(self, message: str) -> AsyncIterator[str]:
+        """Run one prompt, yielding text deltas until ``agent_settled``."""
+        if self._turn_active:
+            raise PiRpcError("Pi already has an active turn")
+
+        self._turn_active = True
+        self._turn_settled.clear()
+        accepted = False
+        turn_error: PiRpcError | None = None
+
+        try:
+            try:
+                await self.request({"type": "prompt", "message": message})
+                accepted = True
+            except _ProcessExitedError as error:
+                raise self._process_lost(error, accepted=False) from error
+
+            try:
+                async with asyncio.timeout(self.timeout):
+                    while True:
+                        event = await self._events.get()
+                        if isinstance(event, BaseException):
+                            raise self._process_lost(event, accepted=accepted) from event
+
+                        event_type = event.get("type")
+                        if event_type == "message_update":
+                            delta = event.get("assistantMessageEvent", {})
+                            delta_type = delta.get("type")
+                            if delta_type == "text_delta":
+                                text = delta.get("delta", "")
+                                if text:
+                                    yield str(text)
+                            elif delta_type == "error":
+                                reason = str(delta.get("reason", "error"))
+                                if reason == "aborted":
+                                    turn_error = PiTurnAbortedError("Pi turn was aborted")
+                                else:
+                                    turn_error = PiRpcError(f"Pi assistant stream failed: {reason}")
+                        elif event_type == "agent_settled":
+                            if turn_error:
+                                raise turn_error
+                            return
+            except TimeoutError:
+                await self._terminate_process()
+                raise PiTurnTimeoutError(
+                    f"Pi turn timed out after {self.timeout} seconds"
+                ) from None
+        except asyncio.CancelledError:
+            await self._abort_cancelled_coroutine()
+            raise
+        finally:
+            self._turn_active = False
+            self._turn_settled.set()
+
+    async def abort(self) -> None:
+        """Abort the active turn, killing Pi only if it does not settle."""
+        if not self._turn_active or not self.is_running:
+            return
+
+        try:
+            await self.request({"type": "abort"}, timeout=self.cancel_grace_timeout)
+            await asyncio.wait_for(self._turn_settled.wait(), timeout=self.cancel_grace_timeout)
+        except (PiRpcError, asyncio.TimeoutError):
+            await self._terminate_process()
+
+    async def close(self) -> None:
+        """Close the process and all background protocol tasks."""
+        if self._closing:
+            return
+        self._closing = True
+
+        if self._process is not None and self._process.returncode is None:
+            self._signal_failure(PiRpcError("Pi RPC process is closing"))
+            await self._terminate_process()
+
+        current = asyncio.current_task()
+        tasks = [self._stdout_task, self._stderr_task, self._watch_task]
+        for task in tasks:
+            if task is not None and task is not current and not task.done():
+                task.cancel()
+        for task in tasks:
+            if task is not None and task is not current:
+                with suppress(asyncio.CancelledError):
+                    await task
+
+    async def _read_stdout(self) -> None:
+        process = self._process
+        assert process is not None and process.stdout is not None
+
+        try:
+            while True:
+                line = await process.stdout.readline()
+                if not line:
+                    return
+                try:
+                    value = json.loads(line.decode("utf-8"))
+                except (UnicodeDecodeError, json.JSONDecodeError) as error:
+                    protocol_error = PiProtocolError(f"Pi emitted malformed JSONL: {error}")
+                    self._signal_failure(protocol_error)
+                    await self._terminate_process()
+                    return
+
+                if not isinstance(value, dict):
+                    protocol_error = PiProtocolError(
+                        "Pi emitted a JSONL record that was not an object"
+                    )
+                    self._signal_failure(protocol_error)
+                    await self._terminate_process()
+                    return
+
+                if value.get("type") == "response" and value.get("id"):
+                    request_id = str(value["id"])
+                    future = self._pending.pop(request_id, None)
+                    if future is not None and not future.done():
+                        future.set_result(value)
+                    continue
+
+                if value.get("type") == "extension_ui_request":
+                    method = value.get("method")
+                    request_id = value.get("id")
+                    if method in _BLOCKING_EXTENSION_UI_METHODS and request_id:
+                        await self._write_payload(
+                            {
+                                "type": "extension_ui_response",
+                                "id": request_id,
+                                "cancelled": True,
+                            }
+                        )
+                    continue
+
+                await self._events.put(value)
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:
+            self._signal_failure(PiProtocolError(f"Pi stdout reader failed: {error}"))
+
+    async def _read_stderr(self) -> None:
+        process = self._process
+        assert process is not None and process.stderr is not None
+        try:
+            while True:
+                chunk = await process.stderr.read(8192)
+                if not chunk:
+                    return
+                self._stderr_tail.append(chunk)
+        except asyncio.CancelledError:
+            raise
+
+    async def _watch_process(self) -> None:
+        process = self._process
+        assert process is not None
+        return_code = await process.wait()
+        if not self._closing:
+            stderr = b"".join(self._stderr_tail).decode("utf-8", errors="replace")[-2000:].strip()
+            message = f"Pi RPC process exited with code {return_code}"
+            if stderr:
+                logger.error("%s; stderr tail: %s", message, stderr)
+            self._signal_failure(_ProcessExitedError(message))
+
+    async def _write_payload(self, payload: dict[str, Any]) -> None:
+        process = self._process
+        if process is None or process.stdin is None or not self.is_running:
+            raise PiRpcError("Pi RPC process is not running")
+        encoded = (json.dumps(payload, separators=(",", ":")) + "\n").encode()
+        async with self._write_lock:
+            process.stdin.write(encoded)
+            await process.stdin.drain()
+
+    async def _abort_cancelled_coroutine(self) -> None:
+        """Prevent a disconnected caller from leaving a turn running in Pi."""
+        if self.is_running:
+            with suppress(PiRpcError, asyncio.TimeoutError):
+                await self.request({"type": "abort"}, timeout=self.cancel_grace_timeout)
+        await self._terminate_process()
+
+    def _signal_failure(self, error: BaseException) -> None:
+        if self._failure is not None:
+            return
+        self._failure = error
+        for future in self._pending.values():
+            if not future.done():
+                future.set_exception(error)
+        self._pending.clear()
+        self._events.put_nowait(error)
+        self._turn_settled.set()
+
+    async def _terminate_process(self) -> None:
+        process = self._process
+        if process is None or process.returncode is not None:
+            return
+
+        process.terminate()
+        try:
+            await asyncio.wait_for(process.wait(), timeout=self.cancel_grace_timeout)
+        except asyncio.TimeoutError:
+            process.kill()
+            await process.wait()
+
+    @staticmethod
+    def _process_lost(error: BaseException, *, accepted: bool) -> PiProcessLostError:
+        qualifier = "after" if accepted else "before"
+        suffix = (
+            " The execution outcome is unknown and the prompt was not replayed." if accepted else ""
+        )
+        return PiProcessLostError(
+            f"Pi process was lost {qualifier} accepting the prompt: {error}.{suffix}",
+            accepted=accepted,
+        )

@@ -24,6 +24,9 @@ export ANTHROPIC_API_KEY="your-key"
 # For Codex examples
 # npm install -g @openai/codex
 
+# For Pi examples
+# Install Pi, or export A2A_PI_COMMAND="npx tsx /path/to/pi/packages/coding-agent/src/cli.ts"
+
 # For Hermes examples — clone https://github.com/NousResearch/hermes-agent
 # export PYTHONPATH=/path/to/hermes-agent:$PYTHONPATH
 # Run `hermes setup` once for ~/.hermes/config.yaml and API keys.
@@ -42,6 +45,7 @@ export ANTHROPIC_API_KEY="your-key"
 | `hermes_agent.py` | Hermes | Yes | 9010 | Hermes AI agent -> A2A server (streaming, multi-turn) |
 | `claude_code_agent.py` | Claude Code | Yes | 9010 | Claude Code CLI -> A2A server (streaming, multi-turn) |
 | `codex_agent.py` | Codex | - | 9011 | Codex CLI -> A2A server (multi-turn) |
+| `pi_agent.py` | Pi | Yes | 9012 | One persistent Pi RPC session -> A2A server |
 | `custom_adapter.py` | Custom | - | 8003 | Custom BaseA2AAdapter (sentiment analyzer) |
 | `single_agent_client.py` | httpx | - | - | **Client**: test any A2A agent |
 | `v02_quickstart.py` | Mixed | - | 9000 | Quick start: callable, n8n, custom |
@@ -69,6 +73,7 @@ python examples/ollama_agent.py        # Ollama (local LLM, streaming)
 python examples/hermes_agent.py        # Hermes (tool use, multi-turn, streaming)
 python examples/claude_code_agent.py   # Claude Code (streaming, multi-turn)
 python examples/codex_agent.py         # Codex (multi-turn)
+python examples/pi_agent.py            # Pi (persistent session, streaming)
 python examples/custom_adapter.py       # Custom adapter (sentiment analyzer)
 ```
 

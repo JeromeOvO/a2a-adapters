@@ -44,6 +44,7 @@ _ADAPTER_LAZY_MAP = {
     "ClaudeCodeAdapter": (".integrations.claude_code", "ClaudeCodeAdapter"),
     "CodexAdapter": (".integrations.codex", "CodexAdapter"),
     "HermesAdapter": (".integrations.hermes", "HermesAdapter"),
+    "PiAdapter": (".integrations.pi", "PiAdapter"),
 }
 
 
@@ -104,4 +105,5 @@ __all__ = [
     "ClaudeCodeAdapter",
     "CodexAdapter",
     "HermesAdapter",
+    "PiAdapter",
 ]

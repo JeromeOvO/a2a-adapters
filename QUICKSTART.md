@@ -229,6 +229,7 @@ asyncio.run(main())
 | CrewAI | `CrewAIAdapter` | - |
 | OpenClaw | `OpenClawAdapter` | - |
 | Ollama | `OllamaAdapter` | Yes |
+| Pi | `PiAdapter` | Yes |
 | Any function | `CallableAdapter` | Optional |
 | Custom class | `BaseA2AAdapter` | Optional |
 

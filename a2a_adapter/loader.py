@@ -43,6 +43,7 @@ _BUILTIN_MAP: Dict[str, tuple[str, str]] = {
     "claude-code": ("a2a_adapter.integrations.claude_code", "ClaudeCodeAdapter"),
     "codex": ("a2a_adapter.integrations.codex", "CodexAdapter"),
     "hermes": ("a2a_adapter.integrations.hermes", "HermesAdapter"),
+    "pi": ("a2a_adapter.integrations.pi", "PiAdapter"),
 }
 
 
