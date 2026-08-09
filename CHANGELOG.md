@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- `PiAdapter` for exposing one persistent Pi RPC process and durable session as
+  a streaming A2A agent
+- Configurable Pi source-entrypoint commands, graceful abort, context binding,
+  and accepted-prompt crash protection
+
 ## [0.2.12] - 2026-05-28
 
 ### Fixed
