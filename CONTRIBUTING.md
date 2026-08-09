@@ -383,6 +383,7 @@ a2a-adapter/
 │   ├── __init__.py         # Package exports + lazy imports
 │   ├── base_adapter.py     # BaseA2AAdapter + AdapterMetadata
 │   ├── executor.py         # AdapterAgentExecutor (bridge)
+│   ├── cli.py              # Thin CLI for supported local agent executables
 │   ├── server.py           # to_a2a() / serve_agent() / build_agent_card()
 │   ├── loader.py           # load_adapter() / register_adapter()
 │   ├── adapter.py          # [deprecated] v0.1 BaseAgentAdapter
@@ -393,11 +394,16 @@ a2a-adapter/
 │       ├── langchain.py
 │       ├── langgraph.py
 │       ├── ollama.py        # OllamaClient + OllamaAdapter
+│       ├── claude_code.py
+│       ├── codex.py
 │       ├── openclaw.py
+│       ├── hermes.py
+│       ├── pi.py
 │       └── callable.py
 ├── examples/               # Usage examples
 ├── tests/                  # Test suite
 │   ├── unit/              # Unit tests
+│   │   └── test_cli.py    # CLI parsing and adapter construction
 │   └── integration/       # Integration tests
 ├── pyproject.toml         # Package configuration
 ├── README.md              # User documentation

@@ -69,6 +69,7 @@ class PiRpcProcess:
         self,
         *,
         command: Sequence[str],
+        cli_args: Sequence[str] | None = None,
         working_dir: str,
         session_id: str,
         session_dir: str,
@@ -81,8 +82,11 @@ class PiRpcProcess:
     ) -> None:
         if not command:
             raise ValueError("Pi command must not be empty")
+        if isinstance(cli_args, str):
+            raise TypeError("cli_args must be a sequence of arguments, not a string")
 
         self.command = list(command)
+        self.cli_args = list(cli_args or [])
         self.working_dir = working_dir
         self.session_id = session_id
         self.session_dir = session_dir
@@ -129,6 +133,7 @@ class PiRpcProcess:
         os.makedirs(self.session_dir, exist_ok=True)
         args = [
             *self.command,
+            *self.cli_args,
             "--mode",
             "rpc",
             "--session-id",
@@ -447,6 +452,7 @@ class PiAdapter(BaseA2AAdapter):
         working_dir: str,
         *,
         pi_command: Sequence[str] | None = None,
+        cli_args: Sequence[str] | None = None,
         session_id: str = "a2a-pi-agent",
         session_dir: str | None = None,
         timeout: float = 600,
@@ -466,6 +472,8 @@ class PiAdapter(BaseA2AAdapter):
     ) -> None:
         if isinstance(pi_command, str):
             raise TypeError("pi_command must be a sequence of arguments, not a string")
+        if isinstance(cli_args, str):
+            raise TypeError("cli_args must be a sequence of arguments, not a string")
         if not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?", session_id):
             raise ValueError(
                 "session_id must contain only alphanumeric characters, '-', '_', "
@@ -474,6 +482,7 @@ class PiAdapter(BaseA2AAdapter):
 
         self.working_dir = working_dir
         self.pi_command = list(pi_command or ["pi"])
+        self.cli_args = list(cli_args or [])
         self.session_id = session_id
         self.session_dir = session_dir or os.path.join(
             working_dir, ".a2a-adapter", "pi", "sessions"
@@ -599,6 +608,7 @@ class PiAdapter(BaseA2AAdapter):
             return self._rpc_factory()
         return PiRpcProcess(
             command=self.pi_command,
+            cli_args=self.cli_args,
             working_dir=self.working_dir,
             session_id=self.session_id,
             session_dir=self.session_dir,

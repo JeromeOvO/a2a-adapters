@@ -29,6 +29,9 @@ dependencies = [
     "pydantic>=2.0.0",
 ]
 
+[project.scripts]
+a2a-adapter = "a2a_adapter.cli:main"
+
 [project.optional-dependencies]
 n8n = []
 crewai = ["crewai>=0.1.0"]

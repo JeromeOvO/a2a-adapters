@@ -9,10 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Thin `a2a-adapter` command-line entry point for starting Pi, Codex, Claude,
+  or OpenClaw as an A2A server from the current directory
+- `-help`, `-h`, and `--help` usage output for the root command and every
+  supported CLI agent
+- Native agent argument passthrough after `--`, with adapter-owned protocol
+  and session options protected from overrides
 - `PiAdapter` for exposing one persistent Pi RPC process and durable session as
   a streaming A2A agent
 - Configurable Pi source-entrypoint commands, graceful abort, context binding,
   and accepted-prompt crash protection
+
+### Changed
+
+- `PiAdapter`, `CodexAdapter`, `ClaudeCodeAdapter`, and `OpenClawAdapter` now
+  accept argument sequences used by the thin CLI entry point
+- Documentation now distinguishes the CLI use case from the Python SDK use case
+- Hermes remains available through the Python SDK and is not part of the v1 CLI
 
 ## [0.2.12] - 2026-05-28
 

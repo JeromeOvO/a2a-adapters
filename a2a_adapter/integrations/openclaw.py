@@ -19,6 +19,7 @@ import re
 import time
 import uuid
 from datetime import datetime, timezone
+from collections.abc import Sequence
 from typing import Any, Dict
 
 import httpx
@@ -188,6 +189,7 @@ class OpenClawAdapter(BaseA2AAdapter):
         thinking: str = "low",
         timeout: int = 600,
         openclaw_path: str = "openclaw",
+        cli_args: Sequence[str] | None = None,
         working_directory: str | None = None,
         env_vars: Dict[str, str] | None = None,
         name: str = "",
@@ -221,12 +223,15 @@ class OpenClawAdapter(BaseA2AAdapter):
                 f"Invalid thinking level: {thinking}. "
                 f"Valid values: {', '.join(sorted(VALID_THINKING_LEVELS))}"
             )
+        if isinstance(cli_args, str):
+            raise TypeError("cli_args must be a sequence of arguments, not a string")
 
         self.session_id = session_id or f"a2a-{uuid.uuid4().hex[:12]}"
         self.agent_id = agent_id
         self.thinking = thinking
         self.timeout = timeout
         self.openclaw_path = openclaw_path
+        self.cli_args = list(cli_args or [])
         self.working_directory = working_directory
         self.env_vars = dict(env_vars) if env_vars else {}
         self._name = name
@@ -333,6 +338,7 @@ class OpenClawAdapter(BaseA2AAdapter):
         cmd = [
             self.openclaw_path,
             "agent",
+            *self.cli_args,
             "--local",
             "--message", message,
             "--json",
