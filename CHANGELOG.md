@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.13] - 2026-08-09
+
 ### Added
 
 - Thin `a2a-adapter` command-line entry point for starting Pi, Codex, Claude,
