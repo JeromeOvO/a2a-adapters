@@ -130,6 +130,22 @@ Run `a2a-adapter -help` for the supported agents, or
 The adapter owns protocol and session flags such as Pi's `--mode rpc` and
 Codex's `--json`; those flags cannot be overridden after `--`.
 
+### Configuring the Agent
+
+The adapter runs the agent non-interactively (for example `claude -p` or
+`codex exec`), so there's no agent UI to change settings in. You configure it
+the same way you would without the adapter, in two ways:
+
+- **The agent's own config files.** The adapter runs the agent as you, in the
+  `--cwd` folder, so it reads your usual setup: `~/.claude/settings.json`,
+  `CLAUDE.md`, and MCP servers for Claude Code; `~/.codex/config.toml` and
+  `AGENTS.md` for Codex; Pi's settings and installed extensions. Claude Code,
+  Codex, and OpenClaw start a fresh process for each request, so changes apply
+  to the next request. Pi keeps one process running, so restart the server
+  after changing Pi's config.
+- **Native CLI flags after `--`.** Use these for settings that should apply
+  only to this server, such as a different model or sandbox mode.
+
 ## Documentation
 
 - [Quick Start](QUICKSTART.md) - end-to-end setup and testing guide

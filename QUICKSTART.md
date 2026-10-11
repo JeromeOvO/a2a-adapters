@@ -208,6 +208,13 @@ a2a-adapter codex --port 9011 -- --model <model> --sandbox workspace-write
 a2a-adapter openclaw --port 9008 --agent-id main --thinking high
 ```
 
+You don't need the agent's interactive UI to configure it. The adapter runs the
+agent non-interactively, as you, in the `--cwd` folder, so it uses the agent's
+normal config files (for example `~/.claude/settings.json` and `CLAUDE.md`, or
+`~/.codex/config.toml` and `AGENTS.md`). Edit those for lasting settings, and
+use flags after `--` for settings that apply only to this server. Changes apply
+to the next request, except for Pi, which needs a server restart.
+
 The server binds to `127.0.0.1:9000` unless you pass `--host`/`--port`. Its
 Agent Card is named after the agent and the folder it works in, such as
 `Claude Code (my-app)`, so several local agents stay distinguishable in an A2A
