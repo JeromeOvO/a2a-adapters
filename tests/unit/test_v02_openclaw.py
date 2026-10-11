@@ -374,7 +374,7 @@ def test_no_streaming():
 def test_metadata_defaults():
     adapter = OpenClawAdapter()
     meta = adapter.get_metadata()
-    assert meta.name == "OpenClawAdapter"
+    assert meta.name == "OpenClaw"
     assert meta.streaming is False
 
 

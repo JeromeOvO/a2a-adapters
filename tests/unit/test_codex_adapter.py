@@ -888,8 +888,8 @@ class TestSessionPersistence:
 class TestMetadata:
     def test_metadata_defaults(self, adapter):
         meta = adapter.get_metadata()
-        assert meta.name == "CodexAdapter"
-        assert meta.description == "OpenAI Codex CLI agent"
+        assert meta.name == "Codex"
+        assert meta.description == "OpenAI Codex coding agent"
         assert meta.streaming is False
 
     def test_metadata_custom(self, tmp_path):
@@ -950,7 +950,7 @@ class TestLoaderIntegration:
 class TestServerIntegration:
     def test_build_agent_card(self, adapter):
         card = build_agent_card(adapter, url="http://localhost:9011")
-        assert card.name == "CodexAdapter"
+        assert card.name == "Codex"
         assert card.capabilities.streaming is False
 
     def test_to_a2a_builds_app(self, adapter):

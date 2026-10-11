@@ -123,8 +123,8 @@ class ClaudeCodeAdapter(BaseA2AAdapter):
 
     def get_metadata(self) -> AdapterMetadata:
         return AdapterMetadata(
-            name=self._name or "ClaudeCodeAdapter",
-            description=self._description or "Claude Code AI agent",
+            name=self._name or "Claude Code",
+            description=self._description or "Claude Code coding agent",
             streaming=True,
             skills=self._skills,
             provider=self._provider,

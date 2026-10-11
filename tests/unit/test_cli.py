@@ -191,3 +191,30 @@ def test_cli_does_not_expose_hermes_in_v1():
 def test_cli_uses_official_claude_command_name_only():
     with pytest.raises(SystemExit, match="2"):
         main(["claude-code"])
+
+
+@pytest.mark.parametrize(
+    "agent, product",
+    [("pi", "Pi"), ("codex", "Codex"), ("claude", "Claude Code"), ("openclaw", "OpenClaw")],
+)
+def test_cli_defaults_agent_card_to_product_and_folder(tmp_path, agent, product):
+    workspace = tmp_path / "my-project"
+    workspace.mkdir()
+
+    with patch("a2a_adapter.cli.serve_agent") as serve:
+        main([agent, "--cwd", str(workspace)])
+
+    meta = serve.call_args.args[0].get_metadata()
+    assert meta.name == f"{product} (my-project)"
+    assert meta.description == f"{product} agent working in my-project"
+
+
+def test_cli_name_and_description_override_defaults(tmp_path):
+    with patch("a2a_adapter.cli.serve_agent") as serve:
+        main(
+            ["claude", "--cwd", str(tmp_path), "--name", "Reviewer", "--description", "Reviews PRs"]
+        )
+
+    meta = serve.call_args.args[0].get_metadata()
+    assert meta.name == "Reviewer"
+    assert meta.description == "Reviews PRs"

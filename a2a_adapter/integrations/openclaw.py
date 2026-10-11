@@ -322,7 +322,7 @@ class OpenClawAdapter(BaseA2AAdapter):
     def get_metadata(self) -> AdapterMetadata:
         """Return adapter metadata for AgentCard generation."""
         return AdapterMetadata(
-            name=self._name or "OpenClawAdapter",
+            name=self._name or "OpenClaw",
             description=self._description or "OpenClaw AI agent",
             streaming=False,
             skills=self._skills,

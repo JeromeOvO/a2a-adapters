@@ -169,7 +169,7 @@ class TestPiMetadata:
     def test_metadata_declares_streaming(self, adapter):
         metadata = adapter.get_metadata()
 
-        assert metadata.name == "PiAdapter"
+        assert metadata.name == "Pi"
         assert metadata.streaming is True
 
 

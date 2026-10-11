@@ -1179,8 +1179,8 @@ class TestSessionPersistence:
 class TestMetadata:
     def test_metadata_defaults(self, adapter):
         meta = adapter.get_metadata()
-        assert meta.name == "ClaudeCodeAdapter"
-        assert meta.description == "Claude Code AI agent"
+        assert meta.name == "Claude Code"
+        assert meta.description == "Claude Code coding agent"
         assert meta.streaming is True
 
     def test_metadata_custom(self, tmp_path):
@@ -1242,7 +1242,7 @@ class TestLoaderIntegration:
 class TestServerIntegration:
     def test_build_agent_card(self, adapter):
         card = build_agent_card(adapter, url="http://localhost:9010")
-        assert card.name == "ClaudeCodeAdapter"
+        assert card.name == "Claude Code"
         assert card.capabilities.streaming is True
 
     def test_to_a2a_builds_app(self, adapter):

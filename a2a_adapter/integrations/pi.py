@@ -568,7 +568,7 @@ class PiAdapter(BaseA2AAdapter):
 
     def get_metadata(self) -> AdapterMetadata:
         return AdapterMetadata(
-            name=self._name or "PiAdapter",
+            name=self._name or "Pi",
             description=self._description or "Pi coding agent",
             streaming=True,
             skills=self._skills,

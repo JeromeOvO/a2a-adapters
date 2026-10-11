@@ -124,8 +124,8 @@ class CodexAdapter(BaseA2AAdapter):
 
     def get_metadata(self) -> AdapterMetadata:
         return AdapterMetadata(
-            name=self._name or "CodexAdapter",
-            description=self._description or "OpenAI Codex CLI agent",
+            name=self._name or "Codex",
+            description=self._description or "OpenAI Codex coding agent",
             streaming=False,
             skills=self._skills,
             provider=self._provider,

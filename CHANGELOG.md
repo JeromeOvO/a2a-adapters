@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- CLI Agent Cards now default to `<Agent> (<folder>)`, such as
+  `Claude Code (my-app)`, with a matching description; `--name` and
+  `--description` still override them
+- `ClaudeCodeAdapter`, `CodexAdapter`, `PiAdapter`, and `OpenClawAdapter`
+  default their Agent Card names to the product name (`Claude Code`, `Codex`,
+  `Pi`, `OpenClaw`) instead of the Python class name
+- README and Quick Start reorganized around the two ways to use the package:
+  the Python SDK and the CLI, with `uv tool install` / `pipx` for the CLI
+
 ## [0.2.13] - 2026-08-09
 
 ### Added
