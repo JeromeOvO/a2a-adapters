@@ -202,7 +202,21 @@ class ClaudeCodeAdapter(BaseA2AAdapter):
                 return StreamEvent(text="".join(chunks))
             return None
         if obj_type == "result":
+            if obj.get("is_error") and obj.get("result"):
+                return StreamEvent(error=f"Claude Code error: {obj['result']}")
             return StreamEvent(session_id=obj.get("session_id") or None)
+        return None
+
+    def _extract_error(self, stdout_text: str) -> str | None:
+        for line in reversed(stdout_text.splitlines()):
+            try:
+                obj = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(obj, dict) and obj.get("type") == "result":
+                if obj.get("is_error") and obj.get("result"):
+                    return str(obj["result"])
+                return None
         return None
 
     def _binary_not_found_message(self) -> str:

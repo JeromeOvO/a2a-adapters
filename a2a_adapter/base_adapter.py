@@ -362,11 +362,11 @@ class BaseA2AAdapter(ABC):
                 user_input=user_input, allow_retry=False,
             )
 
-        # 7. Non-zero exit
+        # 7. Non-zero exit — prefer the CLI's structured error over stderr noise
         if proc.returncode != 0:
+            detail = self._extract_error(stdout_text) or stderr_text or "(no stderr)"
             raise RuntimeError(
-                f"Command failed with exit code {proc.returncode}: "
-                f"{stderr_text or '(no stderr)'}"
+                f"Command failed with exit code {proc.returncode}: {detail}"
             )
 
         if not stdout_text.strip():
@@ -595,6 +595,13 @@ class BaseA2AAdapter(ABC):
     def _handle_stream_line(self, line: str) -> StreamEvent | None:
         """Parse one stdout line for streaming. Override if supports_streaming()."""
         raise NotImplementedError("Streaming CLI adapters must implement _handle_stream_line")
+
+    def _extract_error(self, stdout_text: str) -> str | None:
+        """Return the CLI's own error message from stdout of a failed run. Optional.
+
+        Used for non-zero exits, where stderr often holds only warnings.
+        """
+        return None
 
     def _binary_not_found_message(self) -> str:
         """Error message when CLI binary not found. Override for custom message."""

@@ -17,6 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `Pi`, `OpenClaw`) instead of the Python class name
 - README and Quick Start reorganized around the two ways to use the package:
   the Python SDK and the CLI, with `uv tool install` / `pipx` for the CLI
+- README and Quick Start explain configuring CLI agents through their own
+  config files and native flags after `--`
+
+### Fixed
+
+- Codex and Claude Code failures now report the CLI's own error message (for
+  example an unsupported model) instead of unrelated stderr warnings
 
 ## [0.2.13] - 2026-08-09
 
