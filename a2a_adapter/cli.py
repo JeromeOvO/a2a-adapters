@@ -62,6 +62,12 @@ _MANAGED_OPTIONS = {
     "claude": _CLAUDE_CODE_MANAGED_OPTIONS,
     "openclaw": _OPENCLAW_MANAGED_OPTIONS,
 }
+_AGENT_DISPLAY_NAMES = {
+    "pi": "Pi",
+    "codex": "Codex",
+    "claude": "Claude Code",
+    "openclaw": "OpenClaw",
+}
 
 
 def _port(value: str) -> int:
@@ -94,7 +100,9 @@ def _add_server_options(
     parser.add_argument(
         "--timeout", type=_positive_float, default=600.0, help="Agent timeout in seconds"
     )
-    parser.add_argument("--name", default="", help="Agent Card display name")
+    parser.add_argument(
+        "--name", default="", help='Agent Card display name (default: "<Agent> (<folder>)")'
+    )
     parser.add_argument("--description", default="", help="Agent Card description")
     parser.add_argument("--log-level", default="info", help="Uvicorn log level")
     parser.add_argument("--executable", help="Path to the underlying agent executable")
@@ -179,6 +187,17 @@ def _working_directory(parser: argparse.ArgumentParser, value: str) -> str:
     return str(path)
 
 
+def _card_identity(agent: str, working_dir: str, name: str, description: str) -> tuple[str, str]:
+    """Default the Agent Card to "<Product> (<folder>)" so instances are distinguishable."""
+    product = _AGENT_DISPLAY_NAMES[agent]
+    folder = Path(working_dir).name
+    if not name:
+        name = f"{product} ({folder})" if folder else product
+    if not description:
+        description = f"{product} agent working in {folder}" if folder else f"{product} agent"
+    return name, description
+
+
 def _pi_command(parser: argparse.ArgumentParser, executable: str | None) -> list[str]:
     if executable:
         return [executable]
@@ -195,6 +214,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(wrapper_args)
     _validate_agent_args(parser, args.agent, agent_args)
     working_dir = _working_directory(parser, args.cwd)
+    name, description = _card_identity(args.agent, working_dir, args.name, args.description)
 
     if args.agent == "pi":
         adapter = PiAdapter(
@@ -204,8 +224,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             session_id=args.session_id,
             session_dir=args.session_dir,
             timeout=args.timeout,
-            name=args.name,
-            description=args.description,
+            name=name,
+            description=description,
         )
     elif args.agent == "codex":
         adapter = CodexAdapter(
@@ -213,8 +233,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             codex_path=args.executable or "codex",
             cli_args=agent_args,
             timeout=args.timeout,
-            name=args.name,
-            description=args.description,
+            name=name,
+            description=description,
         )
     elif args.agent == "claude":
         adapter = ClaudeCodeAdapter(
@@ -222,8 +242,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             claude_path=args.executable or "claude",
             cli_args=agent_args,
             timeout=args.timeout,
-            name=args.name,
-            description=args.description,
+            name=name,
+            description=description,
         )
     elif args.agent == "openclaw":
         adapter = OpenClawAdapter(
@@ -234,8 +254,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             openclaw_path=args.executable or "openclaw",
             working_directory=working_dir,
             cli_args=agent_args,
-            name=args.name,
-            description=args.description,
+            name=name,
+            description=description,
         )
     else:  # pragma: no cover - argparse limits this to registered subcommands
         raise AssertionError(f"unsupported agent: {args.agent}")

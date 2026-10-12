@@ -395,6 +395,36 @@ class TestInvoke:
         assert adapter._sessions["ctx-1"] == "thread-inv"
 
     @pytest.mark.asyncio
+    async def test_invoke_error_exit_reports_turn_failure_over_stderr(self, adapter, mock_proc):
+        api_error = json.dumps(
+            {"type": "error", "status": 400, "error": {"message": "Model not supported"}}
+        )
+        stdout = "\n".join(
+            json.dumps(e)
+            for e in [
+                {"type": "thread.started", "thread_id": "t-1"},
+                {"type": "error", "message": api_error},
+                {"type": "turn.failed", "error": {"message": api_error}},
+            ]
+        ).encode()
+        mock_proc.communicate = AsyncMock(
+            return_value=(stdout, b"Reading additional input from stdin...")
+        )
+        mock_proc.returncode = 1
+
+        with patch(
+            "a2a_adapter.base_adapter.create_subprocess_exec",
+            return_value=mock_proc,
+        ):
+            with pytest.raises(RuntimeError) as exc_info:
+                await adapter.invoke(
+                    "fail", context_id="ctx-1",
+                    context=_make_context("task-1"),
+                )
+
+        assert str(exc_info.value) == "Command failed with exit code 1: Model not supported"
+
+    @pytest.mark.asyncio
     async def test_invoke_error_exit(self, adapter, mock_proc):
         mock_proc.communicate = AsyncMock(return_value=(b"", b"fatal error"))
         mock_proc.returncode = 1
@@ -888,8 +918,8 @@ class TestSessionPersistence:
 class TestMetadata:
     def test_metadata_defaults(self, adapter):
         meta = adapter.get_metadata()
-        assert meta.name == "CodexAdapter"
-        assert meta.description == "OpenAI Codex CLI agent"
+        assert meta.name == "Codex"
+        assert meta.description == "OpenAI Codex coding agent"
         assert meta.streaming is False
 
     def test_metadata_custom(self, tmp_path):
@@ -950,7 +980,7 @@ class TestLoaderIntegration:
 class TestServerIntegration:
     def test_build_agent_card(self, adapter):
         card = build_agent_card(adapter, url="http://localhost:9011")
-        assert card.name == "CodexAdapter"
+        assert card.name == "Codex"
         assert card.capabilities.streaming is False
 
     def test_to_a2a_builds_app(self, adapter):

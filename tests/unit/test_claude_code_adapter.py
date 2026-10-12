@@ -402,6 +402,31 @@ class TestInvoke:
         assert adapter._sessions[f"{adapter.session_id}-ctx-1"] == "sess-1"
 
     @pytest.mark.asyncio
+    async def test_invoke_error_exit_reports_result_error_over_stderr(self, adapter, mock_proc):
+        result = {"type": "result", "is_error": True, "result": "Model not available"}
+        mock_proc.communicate = AsyncMock(
+            return_value=(_json_line(result), b"[mcp-sdk] unrelated warning")
+        )
+        mock_proc.returncode = 1
+
+        with patch(
+            "a2a_adapter.base_adapter.create_subprocess_exec",
+            return_value=mock_proc,
+        ):
+            with pytest.raises(RuntimeError) as exc_info:
+                await adapter.invoke(
+                    "fail", context_id="ctx-1",
+                    context=_make_context("task-1"),
+                )
+
+        assert str(exc_info.value) == "Command failed with exit code 1: Model not available"
+
+    def test_stream_line_reports_error_result(self, adapter):
+        line = json.dumps({"type": "result", "is_error": True, "result": "Model not available"})
+        event = adapter._handle_stream_line(line)
+        assert event.error == "Claude Code error: Model not available"
+
+    @pytest.mark.asyncio
     async def test_invoke_error_exit(self, adapter, mock_proc):
         mock_proc.communicate = AsyncMock(return_value=(b"", b"fatal error"))
         mock_proc.returncode = 1
@@ -1179,8 +1204,8 @@ class TestSessionPersistence:
 class TestMetadata:
     def test_metadata_defaults(self, adapter):
         meta = adapter.get_metadata()
-        assert meta.name == "ClaudeCodeAdapter"
-        assert meta.description == "Claude Code AI agent"
+        assert meta.name == "Claude Code"
+        assert meta.description == "Claude Code coding agent"
         assert meta.streaming is True
 
     def test_metadata_custom(self, tmp_path):
@@ -1242,7 +1267,7 @@ class TestLoaderIntegration:
 class TestServerIntegration:
     def test_build_agent_card(self, adapter):
         card = build_agent_card(adapter, url="http://localhost:9010")
-        assert card.name == "ClaudeCodeAdapter"
+        assert card.name == "Claude Code"
         assert card.capabilities.streaming is True
 
     def test_to_a2a_builds_app(self, adapter):

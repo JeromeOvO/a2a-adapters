@@ -124,8 +124,8 @@ class CodexAdapter(BaseA2AAdapter):
 
     def get_metadata(self) -> AdapterMetadata:
         return AdapterMetadata(
-            name=self._name or "CodexAdapter",
-            description=self._description or "OpenAI Codex CLI agent",
+            name=self._name or "Codex",
+            description=self._description or "OpenAI Codex coding agent",
             streaming=False,
             skills=self._skills,
             provider=self._provider,
@@ -184,6 +184,23 @@ class CodexAdapter(BaseA2AAdapter):
         response_text = "\n\n".join(text_parts)
         return ParseResult(text=response_text, session_id=thread_id)
 
+    def _extract_error(self, stdout_text: str) -> str | None:
+        error_msg: str | None = None
+        for line in stdout_text.splitlines():
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(event, dict):
+                continue
+            if event.get("type") == "turn.failed":
+                error = event.get("error")
+                if isinstance(error, dict) and error.get("message"):
+                    error_msg = str(error["message"])
+            elif event.get("type") == "error" and event.get("message") and error_msg is None:
+                error_msg = str(event["message"])
+        return self._unwrap_api_error(error_msg) if error_msg else None
+
     def _binary_not_found_message(self) -> str:
         return (
             f"Codex binary not found at '{self.codex_path}'. "
@@ -191,6 +208,19 @@ class CodexAdapter(BaseA2AAdapter):
         )
 
     # ──── Private ────
+
+    @staticmethod
+    def _unwrap_api_error(message: str) -> str:
+        """Codex embeds raw API error JSON in messages; surface its inner text."""
+        try:
+            payload = json.loads(message)
+        except json.JSONDecodeError:
+            return message
+        if isinstance(payload, dict):
+            error = payload.get("error")
+            if isinstance(error, dict) and error.get("message"):
+                return str(error["message"])
+        return message
 
     @staticmethod
     def _extract_thread_id(event: dict[str, Any]) -> str | None:
